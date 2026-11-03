@@ -1,65 +1,70 @@
 # 智构 AI · AppForge
 
-智能应用生成与发布平台。从需求描述出发，逐步实现 AI 代码生成、在线预览、多轮修改和应用发布。
+智能应用生成与发布平台。逐步实现需求描述、AI 代码生成、在线预览、多轮修改和应用发布。
 
 ## 当前进度
 
-当前为第 0 阶段：工程骨架。已建立仓库规范、后端 Maven 父工程、Maven Wrapper、前端预留目录与开发路线。
+工程骨架与启动代码已准备好，当前采用一个可运行的后端工程。启动类、Java 源码和配置都直接位于 `appforge-backend/src` 下。
 
-本阶段没有 Java 启动类、HTTP 接口、数据库连接、AI 调用或 Vue 页面。Maven 父工程的校验成功，表示工程描述正确，不表示已经启动 Web 服务。
+当前提供 `GET /api/health`，用于确认 HTTP 服务可以响应。用户功能、数据库、AI 调用与前端页面仍按阶段开发。
 
-## 目录职责
+## 项目结构
 
 | 路径 | 职责 |
 | --- | --- |
-| `appforge-backend/` | Maven 父工程，后续统一管理 Java 子模块与依赖版本 |
-| `appforge-web/` | 前端预留目录，后续独立初始化 Vue 工程 |
-| `docs/` | 工程结构、服务边界规划和阶段验收说明 |
+| `appforge-backend/pom.xml` | 可运行后端工程，打包类型为 `jar` |
+| `appforge-backend/src/main/java/` | 启动类与 Java 业务代码 |
+| `appforge-backend/src/main/resources/` | `application.yml` 等运行配置 |
+| `appforge-web/` | 前端预留目录 |
+| `docs/` | 工程约定与分阶段验收说明 |
 | `LICENSES/` | 随附第三方工具的许可文件 |
 
-Git 仓库根目录是本文件所在的 `AppForge/`。根目录不再套一层同名 `AppForge/`，也不需要根目录 `pom.xml`。
+总目录是本 README 所在的 `AppForge` 文件夹。Git 在总目录统一管理，Maven 在 `appforge-backend` 中构建。
 
-## Windows 上打开工程
+## IDEA 导入
 
-1. 将 ZIP 内唯一的 `AppForge` 文件夹解压到 `D:\`。
-2. 确认本文件位置为 `D:\AppForge\README.md`，后端 POM 为 `D:\AppForge\appforge-backend\pom.xml`。
-3. IDEA 通过“文件 → 打开”打开 `D:\AppForge`，用于浏览整个仓库。
-4. 右键 `appforge-backend/pom.xml`，选择“添加为 Maven 项目”。如果只想打开 Maven 工程，也可以直接打开这个 POM。
-5. 将 IDEA 项目 SDK、Maven Importer 和 Maven Runner 的 JDK 统一设为 21。
+1. 打开总目录，例如 `D:\AppForge-project-skeleton\AppForge`。
+2. 将 `appforge-backend/pom.xml` 添加为 Maven 项目并重新加载。
+3. 项目 SDK、Maven Importer 与 Maven Runner 使用 JDK 21。
+4. 打开 `appforge-backend/src/main/java/com/yuelei/appforge/AppForgeApplication.java`，运行 `main` 方法。
 
-本次工程由文件直接构建，不需要再用 Spring Initializr 创建另一个项目。
+本次布局将原 `appforge-app` 子模块中的启动代码移到了后端根工程。`appforge-backend/pom.xml` 已改为 `jar`，不再登记子模块。需要将 IDEA 中旧的 `appforge-app` Maven 项目取消关联后重新加载后端 POM。
 
-## 本阶段验收
-
-在 PowerShell 执行：
+## 命令行验收
 
 ```powershell
-cd D:\AppForge\appforge-backend
+cd D:\AppForge-project-skeleton\AppForge\appforge-backend
 .\mvnw.cmd -v
-.\mvnw.cmd validate
+.\mvnw.cmd clean package
+.\mvnw.cmd spring-boot:run
 ```
 
-预期：版本信息中的 Java 为 21，随后出现 `BUILD SUCCESS`。Wrapper 固定使用 Maven 3.9.9；首次运行需要访问 Maven Central 下载 Maven，成功后复用本地缓存。
+Wrapper 固定使用 Maven 3.9.9；首次构建需要下载依赖。运行时终端持续占用是正常现象，按 `Ctrl+C` 停止服务。
 
-此阶段无需运行 `spring-boot:run`，无需启动 MySQL、Redis 或 Docker。父工程的 `packaging` 是 `pom`，后续具体服务子模块才会加入 Spring Boot 启动类。
+浏览器访问 http://localhost:8123/api/health ，预期返回：
+
+```json
+{"status":"UP","service":"appforge-backend"}
+```
+
+启动、配置和 JAR 运行方式见 [后端说明](appforge-backend/README.md)。本阶段无需 MySQL、Redis 或 Docker。
 
 ## Git 管理
 
-验收通过后，在总目录初始化 Git：
+后端变更验收通过后，在总目录执行：
 
 ```powershell
-cd D:\AppForge
-git init
-git branch -M main
-git add .
+cd D:\AppForge-project-skeleton\AppForge
 git status
-git commit -m "chore: initialize AppForge project structure"
+git add README.md docs appforge-backend
+git diff --cached --stat
+git commit -m "refactor: run backend directly from its source root"
 ```
 
-确认文件列表后再提交。GitHub 仓库建议命名 `appforge-ai`；远程仓库创建和推送另行执行，本压缩包不含 `.git` 目录或远程配置。
+检查暂存列表后再提交，需要同步远程时再执行 `git push`。仓库为 https://github.com/yuelei0104/AppForge 。
 
 ## 后续工作
 
-先阅读 [工程结构](docs/01-project-layout.md) 与 [开发路线](docs/02-roadmap.md)。下一次只添加首个可运行模块并验收，不同时接入全部服务。
+按 [工程结构](docs/01-project-layout.md) 和 [开发路线](docs/02-roadmap.md) 逐步开发。先完成本机启动验收，再添加下一项功能。
 
 第三方工具说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

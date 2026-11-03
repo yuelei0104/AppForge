@@ -1,45 +1,49 @@
 # 工程结构与演进规划
 
-## 已落地的结构
+## 当前布局
 
-| 层级 | 内容 | 当前状态 |
-| --- | --- | --- |
-| 仓库根目录 | README、Git 忽略规则、换行与编辑器规范 | 已创建 |
-| 后端目录 | Maven 父 POM、Wrapper、说明文档 | 已创建 |
-| 前端目录 | 预留位置与说明 | 已创建，未初始化前端框架 |
-| 文档目录 | 结构约定、阶段路线 | 已创建 |
+当前采用前后端独立目录、后端单个可运行 Maven 工程的结构。
 
-推荐本机根目录为 `D:\AppForge`。Maven 父工程为 `D:\AppForge\appforge-backend`。
+| 路径 | 职责 |
+| --- | --- |
+| 总目录 `AppForge` | Git 仓库、说明文档、前后端目录 |
+| `appforge-backend/pom.xml` | 后端依赖与构建管理，`packaging=jar` |
+| `appforge-backend/src/main/java/com/yuelei/appforge/AppForgeApplication.java` | 启动类 |
+| `appforge-backend/src/main/java/com/yuelei/appforge/controller/HealthController.java` | HTTP 健康接口 |
+| `appforge-backend/src/main/resources/application.yml` | 服务名称、端口和上下文路径 |
+| `appforge-web` | 前端预留目录 |
 
-## 后端模块候选
+后端直接拥有 `src`，其中资源目录按 Maven 标准命名为 `resources`。当前不包含 `appforge-app` 子模块，也不包含 `<modules>`。
 
-下面是演进规划，均尚未创建。不会因为列出了目录名，就认为这些服务已经完成或必须立即拆分。
+## 后续 Java 业务包规划
 
-| 候选模块 | 计划职责 | 运行形态 |
-| --- | --- | --- |
-| `appforge-common` | 通用响应、异常和少量稳定公共工具 | Java 库 |
-| `appforge-model` | 初期共用 DTO 与 VO，后续按边界收敛 | Java 库 |
-| `appforge-client` | 服务间调用契约 | Java 库 |
-| `appforge-ai` | 模型适配、生成策略、提示词和工具 | 初期进程内库 |
-| `appforge-app` | 应用、对话、生成任务与发布编排 | 可运行服务 |
-| `appforge-user` | 用户与登录态 | 按阶段独立运行 |
-| `appforge-screenshot` | 截图任务与封面生成 | 按阶段独立运行 |
+下面是组织规划，尚未实现的包不计为项目能力。包均位于 `com.yuelei.appforge` 下。
 
-先完成首个应用模块的独立运行。网关、构建 Worker 和其他独立服务，根据接入路由、执行隔离与扩容需求再落地。
+| 候选包 | 计划职责 |
+| --- | --- |
+| `common` | 通用响应、异常及公共工具 |
+| `user` | 用户、登录与权限 |
+| `application` | 应用管理 |
+| `generation` | 生成任务、状态与编排 |
+| `ai` | 模型适配、提示词与工具 |
+| `deployment` | 构建产物与发布 |
+| `screenshot` | 截图与封面 |
 
-## 边界约定
+按每项功能的实际需要增加 Controller、Service、DTO 等，不一次性创建全部空目录。
 
-1. Maven 模块不等于独立服务；有启动入口、独立进程与部署配置的模块才按服务验收。
-2. 通用库不放业务数据库操作、模型调用或全局扫描配置，防止所有模块被动引入同一套基础设施。
-3. Java 代码放在子模块中。父工程只管理模块和构建规则。
-4. AI 输出文件、构建目录、依赖缓存和发布产物属于运行数据，不进入 Git。
-5. 构建隔离、应用级并发控制与产物版本，是后续设计事项；本骨架尚未实现。
+## 演进约定
+
+1. 当前 `appforge-backend` 是可运行的后端工程，直接包含启动类与配置。
+2. 业务按包逐步拆分。Java 包和独立 Maven 模块是两种不同的组织方式。
+3. 后续确实需要独立服务或共享库时，再重新设计聚合父工程与模块关系；当前 JAR 工程不登记子模块。
+4. AI 输出、构建缓存、发布产物和本地密钥配置不进入 Git。
+5. 构建隔离、应用级并发控制与产物版本在后续阶段实现。
 
 ## 命名约定
 
 - 项目：智构 AI / AppForge。
-- 仓库建议名称：`appforge-ai`。
-- 根目录：`AppForge`。
-- Maven artifactId、模块目录：小写，单词之间用连字符。
-- Java groupId：`com.yuelei`；基础包名：`com.yuelei.appforge`。
-- Git 默认分支建议：`main`。
+- 仓库：`yuelei0104/AppForge`。
+- 后端 artifactId：`appforge-backend`。
+- Java groupId：`com.yuelei`。
+- Java 基础包名：`com.yuelei.appforge`。
+- Git 默认分支：`main`。
