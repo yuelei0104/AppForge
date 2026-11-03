@@ -27,4 +27,9 @@ Thumbs.db
 **/code_output/
 **/code_deploy/
 
+# Local repair artifacts
+/AppForge-*.patch
+/AppForge-*.zip
+/AppForge-backend-direct-fix/
+
 # Maven Wrapper and source files must remain tracked.
