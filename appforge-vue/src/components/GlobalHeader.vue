@@ -1,0 +1,240 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Grid } from 'ant-design-vue'
+import { MenuOutlined, UserOutlined } from '@ant-design/icons-vue'
+import logoUrl from '@/assets/logo.png'
+import type { MenuItemConfig } from '@/config/menu'
+
+interface UserInfo {
+  nickname: string
+  avatar?: string
+}
+
+const props = withDefaults(
+  defineProps<{
+    /** 导航菜单配置，key 同时作为路由路径 */
+    items: MenuItemConfig[]
+    /** 网站标题 */
+    title?: string
+  }>(),
+  {
+    title: '岳蕾 AI 零代码应用生成平台',
+  },
+)
+
+const emit = defineEmits<{
+  login: []
+}>()
+
+const route = useRoute()
+const router = useRouter()
+const screens = Grid.useBreakpoint()
+
+const drawerOpen = ref(false)
+
+/** 当前登录用户；暂时为 null，先展示登录按钮 */
+const currentUser = ref<UserInfo | null>(null)
+
+/** md 断点以下（< 768px）使用抽屉菜单，首次渲染按桌面端处理，避免闪烁 */
+const isMobile = computed(() => screens.value.md === false)
+
+/** 根据当前路由计算需要高亮的菜单项 */
+const selectedKeys = computed<string[]>(() => {
+  const matched = props.items.find((item) => {
+    if (item.key === '/') {
+      return route.path === '/'
+    }
+    return route.path === item.key || route.path.startsWith(`${item.key}/`)
+  })
+  return matched ? [matched.key] : []
+})
+
+function handleMenuClick({ key }: { key: string | number }) {
+  void router.push(String(key))
+}
+
+function handleDrawerMenuClick(info: { key: string | number }) {
+  drawerOpen.value = false
+  handleMenuClick(info)
+}
+
+function handleLogin() {
+  emit('login')
+}
+
+// 路由变化（含浏览器前进后退）时收起移动端抽屉
+watch(
+  () => route.fullPath,
+  () => {
+    drawerOpen.value = false
+  },
+)
+</script>
+
+<template>
+  <a-layout-header class="global-header">
+    <div class="global-header__inner">
+      <router-link to="/" class="global-header__brand" aria-label="返回首页">
+        <img :src="logoUrl" alt="网站 logo" class="global-header__logo" />
+        <span class="global-header__title">{{ title }}</span>
+      </router-link>
+
+      <a-menu
+        v-if="!isMobile"
+        class="global-header__menu"
+        mode="horizontal"
+        :items="items"
+        :selected-keys="selectedKeys"
+        @click="handleMenuClick"
+      />
+
+      <div class="global-header__actions">
+        <a-button
+          v-if="isMobile"
+          class="global-header__menu-trigger"
+          type="text"
+          aria-label="打开导航菜单"
+          @click="drawerOpen = true"
+        >
+          <MenuOutlined />
+        </a-button>
+
+        <template v-if="currentUser">
+          <a-avatar :src="currentUser.avatar" :size="32" class="global-header__avatar">
+            {{ currentUser.nickname.slice(0, 1) }}
+          </a-avatar>
+          <span class="global-header__nickname">{{ currentUser.nickname }}</span>
+        </template>
+        <a-button v-else type="primary" @click="handleLogin">
+          <template #icon>
+            <UserOutlined />
+          </template>
+          登录
+        </a-button>
+      </div>
+    </div>
+
+    <a-drawer
+      v-model:open="drawerOpen"
+      class="global-header__drawer"
+      title="导航菜单"
+      placement="right"
+      :width="240"
+    >
+      <a-menu
+        mode="inline"
+        :items="items"
+        :selected-keys="selectedKeys"
+        @click="handleDrawerMenuClick"
+      />
+    </a-drawer>
+  </a-layout-header>
+</template>
+
+<style scoped>
+.global-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: 64px;
+  padding: 0 24px;
+  line-height: normal;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.global-header__inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  max-width: 1280px;
+  min-width: 0;
+  height: 100%;
+  margin: 0 auto;
+}
+
+.global-header__brand {
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.global-header__logo {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.global-header__title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+  color: rgba(0, 0, 0, 0.88);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-header__menu {
+  flex: 1;
+  min-width: 0;
+  line-height: 62px;
+  background: transparent;
+  border-bottom: none;
+}
+
+.global-header__actions {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.global-header__menu-trigger {
+  padding: 0 8px;
+  font-size: 18px;
+}
+
+.global-header__nickname {
+  max-width: 120px;
+  overflow: hidden;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.88);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .global-header {
+    padding: 0 16px;
+  }
+
+  .global-header__inner {
+    gap: 12px;
+  }
+
+  .global-header__logo {
+    width: 32px;
+    height: 32px;
+  }
+
+  .global-header__title {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 375px) {
+  .global-header__title {
+    max-width: 130px;
+  }
+}
+</style>
