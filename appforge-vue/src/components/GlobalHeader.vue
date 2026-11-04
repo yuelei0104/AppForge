@@ -4,6 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { Grid, message } from 'ant-design-vue'
 import { LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons-vue'
 import logoUrl from '@/assets/logo.png'
+import ACCESS_ENUM from '@/access/accessEnum'
+import type { AccessType } from '@/access/accessEnum'
+import checkAccess from '@/access/checkAccess'
 import type { MenuItemConfig } from '@/config/menu'
 import { useLoginUserStore } from '@/stores/loginUser'
 
@@ -36,6 +39,18 @@ const displayName = computed(
 
 /** 头像加载失败或未设置头像时展示的名字首字 */
 const avatarText = computed(() => displayName.value.slice(0, 1))
+
+/** 根据当前用户权限过滤菜单项 */
+const visibleItems = computed(() =>
+  props.items.filter((item) => {
+    const resolved = router.resolve(item.key)
+    if (resolved.meta.hideInMenu) {
+      return false
+    }
+    const needAccess = (resolved.meta.access as AccessType | undefined) ?? ACCESS_ENUM.NOT_LOGIN
+    return checkAccess(loginUserStore.loginUser, needAccess)
+  }),
+)
 
 /** 根据当前路由计算需要高亮的菜单项 */
 const selectedKeys = computed<string[]>(() => {
@@ -102,7 +117,7 @@ watch(
         v-if="!isMobile"
         class="global-header__menu"
         mode="horizontal"
-        :items="items"
+        :items="visibleItems"
         :selected-keys="selectedKeys"
         @click="handleMenuClick"
       />
@@ -158,7 +173,7 @@ watch(
     >
       <a-menu
         mode="inline"
-        :items="items"
+        :items="visibleItems"
         :selected-keys="selectedKeys"
         @click="handleDrawerMenuClick"
       />
