@@ -6,7 +6,8 @@ spring:
     url: jdbc:mysql://localhost:3306/appforge
     username: root
     password: 123456
-
+  profiles:
+    active: local
 
 server:
   port: 8123
@@ -24,4 +25,24 @@ knife4j:
   setting:
     language: zh_cn
 
+
+# AI
+langchain4j:
+  open-ai:
+    chat-model:
+      base-url: https://api.deepseek.com
+      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      model-name: deepseek-flash
+      log-requests: true
+      log-responses: true
+      strict-json-schema: true
+      response-format: json_object
+
+    streaming-chat-model:
+      base-url: https://api.deepseek.com
+      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      model-name: deepseek-flash
+      max-tokens: 8192
+      log-requests: true
+      log-responses: true
 
