@@ -29,3 +29,5 @@ create table if not exists user
 
 
 SHOW TABLES FROM appforge LIKE 'user';
+
+UPDATE user SET userRole = 'admin' WHERE userAccount = '13111009837';
