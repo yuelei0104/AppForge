@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Grid } from 'ant-design-vue'
+import { Grid, message } from 'ant-design-vue'
 import { MenuOutlined, UserOutlined } from '@ant-design/icons-vue'
 import logoUrl from '@/assets/logo.png'
 import type { MenuItemConfig } from '@/config/menu'
-
-interface UserInfo {
-  nickname: string
-  avatar?: string
-}
+import { useLoginUserStore } from '@/stores/loginUser'
 
 const props = withDefaults(
   defineProps<{
@@ -23,21 +19,23 @@ const props = withDefaults(
   },
 )
 
-const emit = defineEmits<{
-  login: []
-}>()
-
 const route = useRoute()
 const router = useRouter()
 const screens = Grid.useBreakpoint()
+const loginUserStore = useLoginUserStore()
 
 const drawerOpen = ref(false)
 
-/** 当前登录用户；暂时为 null，先展示登录按钮 */
-const currentUser = ref<UserInfo | null>(null)
-
 /** md 断点以下（< 768px）使用抽屉菜单，首次渲染按桌面端处理，避免闪烁 */
 const isMobile = computed(() => screens.value.md === false)
+
+/** 优先展示昵称，没有昵称时退回账号 */
+const displayName = computed(
+  () => loginUserStore.loginUser.userName || loginUserStore.loginUser.userAccount || '未登录',
+)
+
+/** 头像加载失败或未设置头像时展示的名字首字 */
+const avatarText = computed(() => displayName.value.slice(0, 1))
 
 /** 根据当前路由计算需要高亮的菜单项 */
 const selectedKeys = computed<string[]>(() => {
@@ -60,7 +58,23 @@ function handleDrawerMenuClick(info: { key: string | number }) {
 }
 
 function handleLogin() {
-  emit('login')
+  void router.push('/user/login')
+}
+
+async function handleLogout() {
+  try {
+    await loginUserStore.logout()
+    message.success('已退出登录')
+    await router.push('/')
+  } catch {
+    message.error('退出登录失败，请重试')
+  }
+}
+
+function handleUserMenuClick({ key }: { key: string | number }) {
+  if (key === 'logout') {
+    void handleLogout()
+  }
 }
 
 // 路由变化（含浏览器前进后退）时收起移动端抽屉
@@ -100,12 +114,23 @@ watch(
           <MenuOutlined />
         </a-button>
 
-        <template v-if="currentUser">
-          <a-avatar :src="currentUser.avatar" :size="32" class="global-header__avatar">
-            {{ currentUser.nickname.slice(0, 1) }}
-          </a-avatar>
-          <span class="global-header__nickname">{{ currentUser.nickname }}</span>
-        </template>
+        <a-dropdown v-if="loginUserStore.isLoggedIn" placement="bottomRight">
+          <div class="global-header__user" role="button" tabindex="0">
+            <a-avatar
+              :src="loginUserStore.loginUser.userAvatar || undefined"
+              :size="32"
+              class="global-header__avatar"
+            >
+              {{ avatarText }}
+            </a-avatar>
+            <span class="global-header__nickname">{{ displayName }}</span>
+          </div>
+          <template #overlay>
+            <a-menu @click="handleUserMenuClick">
+              <a-menu-item key="logout">退出登录</a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
         <a-button v-else type="primary" @click="handleLogin">
           <template #icon>
             <UserOutlined />
@@ -204,6 +229,20 @@ watch(
   font-size: 18px;
 }
 
+.global-header__user {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.global-header__user:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
 .global-header__nickname {
   max-width: 120px;
   overflow: hidden;
@@ -229,6 +268,10 @@ watch(
 
   .global-header__title {
     font-size: 15px;
+  }
+
+  .global-header__nickname {
+    max-width: 72px;
   }
 }
 
