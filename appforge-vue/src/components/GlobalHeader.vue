@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Grid, message } from 'ant-design-vue'
-import { MenuOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons-vue'
 import logoUrl from '@/assets/logo.png'
 import type { MenuItemConfig } from '@/config/menu'
 import { useLoginUserStore } from '@/stores/loginUser'
@@ -63,9 +63,13 @@ function handleLogin() {
 
 async function handleLogout() {
   try {
-    await loginUserStore.logout()
-    message.success('已退出登录')
-    await router.push('/')
+    const success = await loginUserStore.logout()
+    if (!success) {
+      message.error('退出登录失败，请重试')
+      return
+    }
+    message.success('退出登录成功')
+    await router.push('/user/login')
   } catch {
     message.error('退出登录失败，请重试')
   }
@@ -127,7 +131,12 @@ watch(
           </div>
           <template #overlay>
             <a-menu @click="handleUserMenuClick">
-              <a-menu-item key="logout">退出登录</a-menu-item>
+              <a-menu-item key="logout">
+                <template #icon>
+                  <LogoutOutlined />
+                </template>
+                退出登录
+              </a-menu-item>
             </a-menu>
           </template>
         </a-dropdown>

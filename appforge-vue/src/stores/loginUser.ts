@@ -34,13 +34,14 @@ export const useLoginUserStore = defineStore('loginUser', () => {
     loginUser.value = newLoginUser ?? { ...EMPTY_USER }
   }
 
-  // 退出登录：无论接口是否成功，都清空本地登录态
+  // 退出登录：接口成功后清空全局登录态，返回是否成功
   async function logout() {
-    try {
-      await userLogout()
-    } finally {
+    const res = await userLogout()
+    if (res.data.code === 0) {
       setLoginUser(null)
+      return true
     }
+    return false
   }
 
   return {
