@@ -1,6 +1,12 @@
 spring:
   application:
     name: appforge-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/appforge
+    username: root
+    password: 123456
+
 
 server:
   port: 8123
@@ -17,3 +23,5 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+
