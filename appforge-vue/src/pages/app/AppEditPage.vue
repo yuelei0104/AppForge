@@ -52,6 +52,16 @@ async function loadApp() {
       ? await getAppVoByIdByAdmin({ id: appId })
       : await getAppVoById({ id: appId })
     if (res.data.code === 0 && res.data.data) {
+      if (
+        !isAdmin.value &&
+        (res.data.data.userId == null ||
+          loginUserStore.loginUser.id == null ||
+          String(res.data.data.userId) !== String(loginUserStore.loginUser.id))
+      ) {
+        message.error('无权编辑该应用')
+        await router.replace('/noAuth')
+        return
+      }
       app.value = res.data.data
       initForm(res.data.data)
     } else if (res.data.code === 40101) {
@@ -91,7 +101,9 @@ async function handleSave() {
       : await updateApp({ id, appName })
     if (res.data.code === 0) {
       message.success('保存成功')
-      await router.push(isAdmin.value ? '/admin/appManage' : `/app/chat/${appId}`)
+      await router.push(
+        isAdmin.value ? '/admin/appManage' : { path: `/app/chat/${appId}`, query: { view: '1' } },
+      )
     } else {
       message.error(res.data.message || '保存失败')
     }
@@ -109,9 +121,7 @@ async function handleDelete() {
   deleting.value = true
   try {
     const id = app.value.id ?? appId
-    const res = isAdmin.value
-      ? await deleteAppByAdmin({ id })
-      : await deleteApp({ id })
+    const res = isAdmin.value ? await deleteAppByAdmin({ id }) : await deleteApp({ id })
     if (res.data.code === 0) {
       message.success('删除成功')
       await router.replace(backPath.value)
@@ -142,7 +152,9 @@ onMounted(() => {
         <div>
           <h1 class="app-edit-page__title">应用信息</h1>
           <p class="app-edit-page__desc">
-            {{ isAdmin ? '管理员可修改应用名称、封面和优先级' : '修改应用名称，其他信息由平台管理' }}
+            {{
+              isAdmin ? '管理员可修改应用名称、封面和优先级' : '修改应用名称，其他信息由平台管理'
+            }}
           </p>
         </div>
       </div>

@@ -138,7 +138,7 @@ public class AppController {
 
 
     /**
-     * 根据 id 获取自己的应用详情
+     * 根据 id 获取自己的应用或精选应用详情（需登录）
      *
      * @param id      应用 id
      * @param request 请求对象
@@ -369,3 +369,4 @@ public class AppController {
 
 
 }
+

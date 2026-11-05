@@ -144,7 +144,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Override
     public AppVO getAppVOById(long id, User loginUser) {
         App app = getAppById(id);
-        checkOwnership(app, loginUser);
+        ThrowUtils.throwIf(loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
+        // 精选应用允许其他登录用户查看，写操作仍单独校验归属。
+        ThrowUtils.throwIf(
+            !Objects.equals(app.getUserId(), loginUser.getId())
+                && !Objects.equals(app.getPriority(), AppConstant.GOOD_APP_PRIORITY),
+            ErrorCode.NO_AUTH_ERROR,
+            "无权查看该应用"
+        );
         return getAppVO(app);
     }
 
@@ -467,3 +474,4 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
 }
+
