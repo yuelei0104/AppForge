@@ -55,8 +55,20 @@ async function fetchData() {
     if (!params.appName) {
       delete params.appName
     }
+    if (params.id === '' || params.id == null) {
+      delete params.id
+    }
     if (params.userId === '' || params.userId == null) {
       delete params.userId
+    }
+    if (!params.cover) {
+      delete params.cover
+    }
+    if (!params.initPrompt) {
+      delete params.initPrompt
+    }
+    if (!params.deployKey) {
+      delete params.deployKey
     }
     if (params.priority == null) {
       delete params.priority
@@ -85,7 +97,11 @@ function doSearch() {
 
 function resetSearch() {
   searchParams.appName = ''
+  searchParams.id = undefined
   searchParams.userId = undefined
+  searchParams.cover = ''
+  searchParams.initPrompt = ''
+  searchParams.deployKey = ''
   searchParams.priority = undefined
   searchParams.codeGenType = undefined
   searchParams.pageNum = 1
@@ -153,8 +169,20 @@ onMounted(() => {
       <a-form-item label="应用名称">
         <a-input v-model:value="searchParams.appName" placeholder="输入应用名称" allow-clear />
       </a-form-item>
+      <a-form-item label="应用 ID">
+        <a-input v-model:value="searchParams.id" placeholder="输入应用 ID" allow-clear />
+      </a-form-item>
       <a-form-item label="用户 ID">
         <a-input v-model:value="searchParams.userId" placeholder="输入用户 ID" allow-clear />
+      </a-form-item>
+      <a-form-item label="封面">
+        <a-input v-model:value="searchParams.cover" placeholder="输入封面地址" allow-clear />
+      </a-form-item>
+      <a-form-item label="Prompt">
+        <a-input v-model:value="searchParams.initPrompt" placeholder="输入 Prompt" allow-clear />
+      </a-form-item>
+      <a-form-item label="部署标识">
+        <a-input v-model:value="searchParams.deployKey" placeholder="输入部署标识" allow-clear />
       </a-form-item>
       <a-form-item label="优先级">
         <a-select
