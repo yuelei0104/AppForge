@@ -24,6 +24,10 @@ export const menuItems: MenuItemConfig[] = [
     label: '关于',
   },
   {
+    key: '/admin/appManage',
+    label: '应用管理',
+  },
+  {
     key: '/admin/userManage',
     label: '用户管理',
   },
