@@ -10,6 +10,7 @@ import com.yuelei.appforge.model.dto.app.AppUpdateRequest;
 import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.model.vo.AppVO;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -128,4 +129,15 @@ public interface AppService extends IService<App> {
      * @return 查询条件
      */
     QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest);
+
+    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
+    /**
+     * 部署应用
+     *
+     * @param appId     应用 id
+     * @param loginUser 当前登录用户
+     * @return 部署标识
+     */
+    String deployApp(Long appId, User loginUser);
 }

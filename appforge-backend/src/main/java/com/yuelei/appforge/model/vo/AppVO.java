@@ -5,11 +5,6 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * 应用视图对象。
- *
- * @author yuelei
- */
 @Data
 public class AppVO implements Serializable {
 
@@ -34,7 +29,7 @@ public class AppVO implements Serializable {
     private String initPrompt;
 
     /**
-     * 代码生成类型
+     * 代码生成类型（枚举）
      */
     private String codeGenType;
 
@@ -54,14 +49,9 @@ public class AppVO implements Serializable {
     private Integer priority;
 
     /**
-     * 创建用户 id
+     * 创建用户id
      */
     private Long userId;
-
-    /**
-     * 编辑时间
-     */
-    private LocalDateTime editTime;
 
     /**
      * 创建时间
@@ -72,6 +62,11 @@ public class AppVO implements Serializable {
      * 更新时间
      */
     private LocalDateTime updateTime;
+
+    /**
+     * 创建用户信息
+     */
+    private UserVO user;
 
     private static final long serialVersionUID = 1L;
 }

@@ -14,7 +14,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public BaseResponse<?> businessExceptionHandler(BusinessException e) {
-        log.error("BusinessException", e);
+        // 未登录、数据不存在属于正常的业务分支，不打印完整堆栈，避免刷屏
+        if (e.getCode() == ErrorCode.NOT_LOGIN_ERROR.getCode()
+            || e.getCode() == ErrorCode.NOT_FOUND_ERROR.getCode()) {
+            log.warn("BusinessException: {}", e.getMessage());
+        } else {
+            log.error("BusinessException", e);
+        }
         return ResultUtils.error(e.getCode(), e.getMessage());
     }
 
