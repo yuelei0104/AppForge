@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { AppstoreOutlined, EditOutlined } from '@ant-design/icons-vue'
 import { formatRelativeTime } from '@/utils/date'
+import { getAppDeployUrl } from '@/utils/appUrls'
 
 const props = withDefaults(
   defineProps<{
@@ -57,6 +58,19 @@ function handleEdit(event: MouseEvent) {
       </div>
 
       <a-tag v-if="isFeatured" color="blue" class="app-card__featured">精选</a-tag>
+
+      <div class="app-card__actions">
+        <a-button type="primary" @click.stop="handleOpen">查看对话</a-button>
+        <a-button
+          v-if="app.deployKey"
+          :href="getAppDeployUrl(app.deployKey)"
+          target="_blank"
+          rel="noopener noreferrer"
+          @click.stop
+        >
+          查看作品
+        </a-button>
+      </div>
 
       <a-button
         v-if="editable"
@@ -150,6 +164,7 @@ function handleEdit(event: MouseEvent) {
 
 .app-card__featured {
   position: absolute;
+  z-index: 2;
   top: 12px;
   left: 12px;
   margin: 0;
@@ -158,6 +173,7 @@ function handleEdit(event: MouseEvent) {
 
 .app-card__edit {
   position: absolute;
+  z-index: 2;
   top: 8px;
   right: 8px;
   color: #fff;
@@ -167,8 +183,38 @@ function handleEdit(event: MouseEvent) {
 }
 
 .app-card:hover .app-card__edit,
+.app-card:focus-within .app-card__edit,
 .app-card__edit:focus-visible {
   opacity: 1;
+}
+
+.app-card__actions {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 12px;
+  background: rgba(15, 23, 42, 0.36);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.app-card:hover .app-card__actions,
+.app-card:focus-within .app-card__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .app-card__actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .app-card__body {

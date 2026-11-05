@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -17,6 +17,7 @@ import logoUrl from '@/assets/logo.png'
 import { deployApp, getAppVoById } from '@/api/appController'
 import { API_BASE_URL } from '@/request'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { getAppPreviewUrl } from '@/utils/appUrls'
 
 interface ChatMessage {
   id: string
@@ -30,7 +31,8 @@ const route = useRoute()
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
-const appId = String(route.params.appId ?? '')
+const appId = computed(() => String(route.params.appId ?? ''))
+const isViewMode = computed(() => route.query.view === '1')
 const app = ref<API.AppVO | null>(null)
 const appLoading = ref(true)
 const messages = ref<ChatMessage[]>([])
@@ -49,8 +51,18 @@ const deployUrl = ref('')
 
 let eventSource: EventSource | null = null
 let messageSeed = 0
+let loadSequence = 0
 
 const appName = computed(() => app.value?.appName || '未命名应用')
+const isOwner = computed(
+  () =>
+    app.value?.userId != null &&
+    loginUserStore.loginUser.id != null &&
+    String(app.value.userId) === String(loginUserStore.loginUser.id),
+)
+const readOnlyHint = computed(() =>
+  app.value && !isOwner.value ? '无法在别人的作品下对话哦～' : undefined,
+)
 
 function nextMessageId() {
   messageSeed += 1
@@ -88,7 +100,7 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
 
   if (success) {
     aiMessage.status = 'done'
-    previewUrl.value = `${API_BASE_URL}/static/${appId}/?t=${Date.now()}`
+    previewUrl.value = `${getAppPreviewUrl(appId.value)}?t=${Date.now()}`
     previewVisible.value = true
     previewKey.value += 1
     message.success('应用生成完成')
@@ -104,14 +116,14 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
 
 function openEventSource(userMessage: string, aiMessage: ChatMessage) {
   const url = `${API_BASE_URL}/app/chat/gen/code?appId=${encodeURIComponent(
-    appId,
+    appId.value,
   )}&message=${encodeURIComponent(userMessage)}`
 
   const es = new EventSource(url, { withCredentials: true })
   eventSource = es
 
   es.onmessage = (event) => {
-    if (!streaming.value) {
+    if (eventSource !== es || !streaming.value) {
       return
     }
     try {
@@ -126,17 +138,23 @@ function openEventSource(userMessage: string, aiMessage: ChatMessage) {
   }
 
   es.addEventListener('done', () => {
-    finishStream(aiMessage, true)
+    if (eventSource === es) {
+      finishStream(aiMessage, true)
+    }
   })
 
   es.onerror = () => {
-    if (streaming.value) {
+    if (eventSource === es && streaming.value) {
       finishStream(aiMessage, false)
     }
   }
 }
 
 function sendMessage(rawMessage: string) {
+  if (!isOwner.value) {
+    message.warning(readOnlyHint.value || '应用信息尚未加载')
+    return
+  }
   const content = rawMessage.trim()
   if (!content) {
     message.warning('请输入消息内容')
@@ -182,18 +200,36 @@ function handleComposerKeydown(event: KeyboardEvent) {
 }
 
 async function loadApp() {
-  if (!appId) {
+  const sequence = ++loadSequence
+  closeStream()
+  streaming.value = false
+  previewLoading.value = false
+  previewVisible.value = false
+  previewUrl.value = ''
+  app.value = null
+  messages.value = []
+  input.value = ''
+  if (!appId.value) {
     message.error('应用不存在')
     await router.replace('/')
     return
   }
   appLoading.value = true
   try {
-    const res = await getAppVoById({ id: appId })
+    const res = await getAppVoById({ id: appId.value })
+    if (sequence !== loadSequence) {
+      return
+    }
     if (res.data.code === 0 && res.data.data) {
       app.value = res.data.data
-      if (res.data.data.initPrompt) {
+      if (isViewMode.value || !isOwner.value) {
+        previewUrl.value = getAppPreviewUrl(appId.value)
+        previewVisible.value = true
+        previewKey.value += 1
+      } else if (res.data.data.initPrompt) {
         sendMessage(res.data.data.initPrompt)
+        // 首次创建自动生成后也切换为浏览地址，刷新不会重复调用模型。
+        void router.replace({ path: route.path, query: { ...route.query, view: '1' } })
       }
     } else if (res.data.code === 40101) {
       message.error('无权访问该应用')
@@ -203,20 +239,25 @@ async function loadApp() {
       await router.replace('/')
     }
   } catch {
+    if (sequence !== loadSequence) {
+      return
+    }
     message.error('获取应用信息失败，请稍后重试')
     await router.replace('/')
   } finally {
-    appLoading.value = false
+    if (sequence === loadSequence) {
+      appLoading.value = false
+    }
   }
 }
 
 async function handleDeploy() {
-  if (!app.value) {
+  if (!app.value || !isOwner.value) {
     return
   }
   deployLoading.value = true
   try {
-    const res = await deployApp({ appId })
+    const res = await deployApp({ appId: appId.value })
     if (res.data.code === 0 && res.data.data) {
       deployUrl.value = res.data.data
       deployModalOpen.value = true
@@ -247,18 +288,24 @@ function openPreview() {
 
 function handleAppMenuClick({ key }: { key: string | number }) {
   if (key === 'edit') {
-    void router.push(`/app/edit/${appId}`)
+    if (isOwner.value) {
+      void router.push(`/app/edit/${appId.value}`)
+    }
   } else if (key === 'home') {
     void router.push('/')
   }
 }
 
-onMounted(() => {
-  void loadApp()
-})
+watch(
+  () => route.params.appId,
+  () => void loadApp(),
+  { immediate: true },
+)
 
 onBeforeUnmount(() => {
+  loadSequence += 1
   closeStream()
+  streaming.value = false
 })
 </script>
 
@@ -279,7 +326,7 @@ onBeforeUnmount(() => {
           </button>
           <template #overlay>
             <a-menu @click="handleAppMenuClick">
-              <a-menu-item key="edit">
+              <a-menu-item v-if="isOwner" key="edit">
                 <EditOutlined />
                 编辑应用信息
               </a-menu-item>
@@ -295,6 +342,7 @@ onBeforeUnmount(() => {
       </div>
 
       <a-button
+        v-if="isOwner"
         type="primary"
         :loading="deployLoading"
         :disabled="!app || streaming"
@@ -313,7 +361,8 @@ onBeforeUnmount(() => {
           <a-spin v-if="appLoading" class="chat-panel__loading" />
           <div v-else-if="!messages.length" class="chat-panel__empty">
             <div class="chat-panel__empty-icon">AI</div>
-            <p>描述你的想法，AI 会帮你生成一个完整的网站应用。</p>
+            <p v-if="isViewMode">正在浏览应用，暂未保存历史对话。</p>
+            <p v-else>描述你的想法，AI 会帮你生成一个完整的网站应用。</p>
           </div>
 
           <div
@@ -337,10 +386,8 @@ onBeforeUnmount(() => {
             <div class="chat-message__body">
               <div class="chat-message__bubble">
                 <div class="chat-message__content">
-                  {{ item.content }}<span
-                    v-if="item.status === 'streaming'"
-                    class="chat-message__cursor"
-                  />
+                  {{ item.content
+                  }}<span v-if="item.status === 'streaming'" class="chat-message__cursor" />
                 </div>
               </div>
               <div class="chat-message__meta">
@@ -352,19 +399,27 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="chat-panel__composer">
-          <a-textarea
-            v-model:value="input"
-            :auto-size="{ minRows: 2, maxRows: 6 }"
-            :maxlength="2000"
-            :disabled="streaming"
-            placeholder="描述你想创建或修改的内容，例如：把页面配色改成暗黑风格"
-            @keydown="handleComposerKeydown"
-          />
+          <a-tooltip :title="readOnlyHint">
+            <div>
+              <a-textarea
+                v-model:value="input"
+                :auto-size="{ minRows: 2, maxRows: 6 }"
+                :maxlength="2000"
+                :disabled="streaming || appLoading || !isOwner"
+                :placeholder="
+                  readOnlyHint || '描述你想创建或修改的内容，例如：把页面配色改成暗黑风格'
+                "
+                @keydown="handleComposerKeydown"
+              />
+            </div>
+          </a-tooltip>
           <div class="chat-panel__composer-footer">
-            <span class="chat-panel__composer-hint">Ctrl / ⌘ + Enter 发送</span>
+            <span class="chat-panel__composer-hint">{{
+              readOnlyHint || 'Ctrl / ⌘ + Enter 发送'
+            }}</span>
             <a-button
               type="primary"
-              :disabled="!input.trim() || streaming"
+              :disabled="!input.trim() || streaming || appLoading || !isOwner"
               :loading="streaming"
               @click="handleSend"
             >

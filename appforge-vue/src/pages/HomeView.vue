@@ -5,7 +5,6 @@ import { message } from 'ant-design-vue'
 import { ArrowUpOutlined, LoginOutlined } from '@ant-design/icons-vue'
 import AppCard from '@/components/AppCard.vue'
 import { addApp, listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController'
-import { API_BASE_URL } from '@/request'
 import { useLoginUserStore } from '@/stores/loginUser'
 
 const router = useRouter()
@@ -141,7 +140,7 @@ function handleGoodPageChange(page: number) {
 }
 
 function openMyApp(app: API.AppVO) {
-  void router.push(`/app/chat/${String(app.id)}`)
+  void router.push({ path: `/app/chat/${String(app.id)}`, query: { view: '1' } })
 }
 
 function editMyApp(app: API.AppVO) {
@@ -149,18 +148,7 @@ function editMyApp(app: API.AppVO) {
 }
 
 function openGoodApp(app: API.AppVO) {
-  if (
-    isLoggedIn.value &&
-    app.userId != null &&
-    String(app.userId) === String(loginUserStore.loginUser.id)
-  ) {
-    void router.push(`/app/chat/${String(app.id)}`)
-    return
-  }
-  const url = app.deployKey
-    ? `${API_BASE_URL}/deploy/${app.deployKey}/`
-    : `${API_BASE_URL}/static/${String(app.id)}/`
-  window.open(url, '_blank', 'noopener,noreferrer')
+  openMyApp(app)
 }
 
 onMounted(() => {
