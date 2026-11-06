@@ -172,6 +172,9 @@ function sendMessage(rawMessage: string) {
     message.warning('请输入消息内容')
     return
   }
+  if (deployLoading.value || deleting.value) {
+    return
+  }
   if (streaming.value) {
     message.warning('AI 正在生成中，请稍候')
     return
@@ -213,6 +216,9 @@ function handleComposerKeydown(event: KeyboardEvent) {
 
 async function loadApp() {
   const sequence = ++loadSequence
+  deployModalOpen.value = false
+  deployUrl.value = ''
+  deployLoading.value = false
   closeStream()
   streaming.value = false
   previewLoading.value = false
@@ -267,22 +273,47 @@ async function loadApp() {
 }
 
 async function handleDeploy() {
-  if (!app.value || !isOwner.value) {
+  if (!app.value || !isOwner.value || streaming.value || deleting.value || deployLoading.value) {
     return
   }
+  const id = appId.value
+  const sequence = loadSequence
   deployLoading.value = true
   try {
-    const res = await deployApp({ appId: appId.value })
+    const res = await deployApp({ appId: id })
+    if (sequence !== loadSequence) {
+      return
+    }
     if (res.data.code === 0 && res.data.data) {
       deployUrl.value = res.data.data
       deployModalOpen.value = true
+      message.success('部署成功')
+      // 刷新部署标识和时间，不重新加载对话或触发代码生成。
+      try {
+        const info = isAdmin.value ? await getAppVoByIdByAdmin({ id }) : await getAppVoById({ id })
+        if (sequence === loadSequence) {
+          if (info.data.code === 0 && info.data.data) {
+            app.value = info.data.data
+          } else {
+            message.warning('部署已成功，应用信息刷新失败，请稍后刷新页面')
+          }
+        }
+      } catch {
+        if (sequence === loadSequence) {
+          message.warning('部署已成功，应用信息刷新失败，请稍后刷新页面')
+        }
+      }
     } else {
       message.error(res.data.message || '部署失败')
     }
   } catch {
-    message.error('部署失败，请稍后重试')
+    if (sequence === loadSequence) {
+      message.error('部署失败，请稍后重试')
+    }
   } finally {
-    deployLoading.value = false
+    if (sequence === loadSequence) {
+      deployLoading.value = false
+    }
   }
 }
 
@@ -310,7 +341,7 @@ function handleAppMenuClick({ key }: { key: string | number }) {
 }
 
 function handleEditApp() {
-  if (!canManage.value || streaming.value || deleting.value) {
+  if (!canManage.value || streaming.value || deployLoading.value || deleting.value) {
     return
   }
   detailsOpen.value = false
@@ -318,7 +349,7 @@ function handleEditApp() {
 }
 
 async function handleDeleteApp() {
-  if (!app.value || !canManage.value || streaming.value || deleting.value) {
+  if (!app.value || !canManage.value || streaming.value || deployLoading.value || deleting.value) {
     return
   }
   const id = appId.value
@@ -373,7 +404,11 @@ onBeforeUnmount(() => {
           </button>
           <template #overlay>
             <a-menu @click="handleAppMenuClick">
-              <a-menu-item v-if="canManage" key="edit" :disabled="streaming || deleting">
+              <a-menu-item
+                v-if="canManage"
+                key="edit"
+                :disabled="streaming || deployLoading || deleting"
+              >
                 <EditOutlined />
                 编辑应用信息
               </a-menu-item>
@@ -397,7 +432,7 @@ onBeforeUnmount(() => {
           v-if="isOwner"
           type="primary"
           :loading="deployLoading"
-          :disabled="!app || streaming || deleting"
+          :disabled="!app || streaming || deleting || deployLoading"
           @click="handleDeploy"
         >
           <template #icon><CloudUploadOutlined /></template>
@@ -456,7 +491,7 @@ onBeforeUnmount(() => {
                 v-model:value="input"
                 :auto-size="{ minRows: 2, maxRows: 6 }"
                 :maxlength="2000"
-                :disabled="streaming || appLoading || !isOwner"
+                :disabled="streaming || deployLoading || deleting || appLoading || !isOwner"
                 :placeholder="
                   readOnlyHint || '描述你想创建或修改的内容，例如：把页面配色改成暗黑风格'
                 "
@@ -470,7 +505,9 @@ onBeforeUnmount(() => {
             }}</span>
             <a-button
               type="primary"
-              :disabled="!input.trim() || streaming || appLoading || !isOwner"
+              :disabled="
+                !input.trim() || streaming || deployLoading || deleting || appLoading || !isOwner
+              "
               :loading="streaming"
               @click="handleSend"
             >
@@ -518,25 +555,36 @@ onBeforeUnmount(() => {
       :app="app"
       :can-manage="canManage"
       :deleting="deleting"
-      :busy="streaming"
+      :busy="streaming || deployLoading"
       @edit="handleEditApp"
       @delete="handleDeleteApp"
     />
 
-    <a-modal v-model:open="deployModalOpen" title="部署成功" :footer="null" width="520px">
-      <p class="deploy-modal__desc">你的应用已部署成功，可以通过以下地址访问：</p>
-      <a-space direction="vertical" style="width: 100%">
-        <a-input :value="deployUrl" readonly>
-          <template #addonAfter>
-            <a-button type="text" size="small" @click="copyDeployUrl">
-              <template #icon>
-                <CopyOutlined />
-              </template>
+    <a-modal v-model:open="deployModalOpen" title="部署成功" :footer="null" :width="640">
+      <a-result
+        status="success"
+        title="网站部署成功！"
+        sub-title="你的网站已经成功部署，可以通过以下链接访问："
+        class="deploy-modal__result"
+      >
+        <template #extra>
+          <a-input :value="deployUrl" readonly aria-label="部署地址">
+            <template #suffix>
+              <a-tooltip title="复制部署地址">
+                <a-button type="text" size="small" aria-label="复制部署地址" @click="copyDeployUrl">
+                  <template #icon><CopyOutlined /></template>
+                </a-button>
+              </a-tooltip>
+            </template>
+          </a-input>
+          <a-space class="deploy-modal__actions" wrap>
+            <a-button type="primary" :href="deployUrl" target="_blank" rel="noopener noreferrer">
+              访问网站
             </a-button>
-          </template>
-        </a-input>
-        <a-button type="primary" block :href="deployUrl" target="_blank">打开部署应用</a-button>
-      </a-space>
+            <a-button @click="deployModalOpen = false">关闭</a-button>
+          </a-space>
+        </template>
+      </a-result>
     </a-modal>
   </div>
 </template>
@@ -819,9 +867,23 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(2px);
 }
 
-.deploy-modal__desc {
-  margin-bottom: 12px;
-  color: #667085;
+.deploy-modal__result {
+  padding: 28px 16px 16px;
+}
+
+.deploy-modal__result :deep(.ant-result-icon > .anticon) {
+  font-size: 52px;
+}
+
+.deploy-modal__result :deep(.ant-result-title) {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.deploy-modal__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
 }
 
 @media (max-width: 991px) {
