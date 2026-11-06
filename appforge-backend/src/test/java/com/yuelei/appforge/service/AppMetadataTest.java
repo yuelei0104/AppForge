@@ -1,5 +1,7 @@
 package com.yuelei.appforge.service;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yuelei.appforge.aop.AuthInterceptor;
@@ -11,6 +13,7 @@ import com.yuelei.appforge.model.dto.app.AppUpdateRequest;
 import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.service.impl.AppServiceImpl;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,8 +27,6 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.io.Serializable;
 import java.lang.reflect.Proxy;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /** 验证实际服务及控制器权限切面，不启动数据库或调用模型。 */
 class AppMetadataTest {
@@ -46,18 +47,19 @@ class AppMetadataTest {
         app.setPriority(0);
         owner = user(100L, "user");
         request = new MockHttpServletRequest();
-        service = new AppServiceImpl() {
-            @Override
-            public App getById(Serializable id) {
-                return Long.valueOf(APP_ID).equals(id) ? app : null;
-            }
+        service =
+                new AppServiceImpl() {
+                    @Override
+                    public App getById(Serializable id) {
+                        return Long.valueOf(APP_ID).equals(id) ? app : null;
+                    }
 
-            @Override
-            public boolean updateById(App entity) {
-                saved = entity;
-                return true;
-            }
-        };
+                    @Override
+                    public boolean updateById(App entity) {
+                        saved = entity;
+                        return true;
+                    }
+                };
     }
 
     @AfterEach
@@ -89,18 +91,22 @@ class AppMetadataTest {
     @Test
     void otherUserCannotUpdateEvenFeaturedApp() {
         app.setPriority(99);
-        assertError(ErrorCode.NO_AUTH_ERROR,
-            () -> controller(user(200L, "user")).updateApp(update("新名称", ""), request));
+        assertError(
+                ErrorCode.NO_AUTH_ERROR,
+                () -> controller(user(200L, "user")).updateApp(update("新名称", ""), request));
         assertNull(saved);
     }
 
     @Test
     void forgedAdminFieldsAreIgnoredByUserRequest() throws Exception {
-        ObjectMapper mapper = new ObjectMapper()
-            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-        String json = "{\"id\":\"" + APP_ID + "\",\"appName\":\"合法名称\",\"cover\":\"\","
-            + "\"priority\":99,\"userId\":200,\"codeGenType\":\"html\","
-            + "\"deployKey\":\"forged\",\"initPrompt\":\"forged\"}";
+        ObjectMapper mapper =
+                new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        String json =
+                "{\"id\":\""
+                        + APP_ID
+                        + "\",\"appName\":\"合法名称\",\"cover\":\"\","
+                        + "\"priority\":99,\"userId\":200,\"codeGenType\":\"html\","
+                        + "\"deployKey\":\"forged\",\"initPrompt\":\"forged\"}";
         AppUpdateRequest update = mapper.readValue(json, AppUpdateRequest.class);
         controller(owner).updateApp(update, request);
         assertNull(saved.getPriority());
@@ -111,7 +117,14 @@ class AppMetadataTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"javascript:alert(1)", "data:image/png;base64,abc", "file:///tmp/a.png", "not-a-url", "https:///missing-host"})
+    @ValueSource(
+            strings = {
+                "javascript:alert(1)",
+                "data:image/png;base64,abc",
+                "file:///tmp/a.png",
+                "not-a-url",
+                "https:///missing-host"
+            })
     void invalidCoverIsRejected(String cover) {
         assertError(ErrorCode.PARAMS_ERROR, () -> service.updateApp(update("名称", cover), owner));
         assertNull(saved);
@@ -119,10 +132,14 @@ class AppMetadataTest {
 
     @Test
     void oversizedNameAndCoverAreRejected() {
-        assertError(ErrorCode.PARAMS_ERROR,
-            () -> service.updateApp(update("名".repeat(257), ""), owner));
-        assertError(ErrorCode.PARAMS_ERROR,
-            () -> service.updateApp(update("名称", "https://example.com/" + "a".repeat(512)), owner));
+        assertError(
+                ErrorCode.PARAMS_ERROR,
+                () -> service.updateApp(update("名".repeat(257), ""), owner));
+        assertError(
+                ErrorCode.PARAMS_ERROR,
+                () ->
+                        service.updateApp(
+                                update("名称", "https://example.com/" + "a".repeat(512)), owner));
         assertNull(saved);
     }
 
@@ -141,7 +158,20 @@ class AppMetadataTest {
     }
 
     @Test
+    void adminCannotFeaturePrivateApplication() {
+        app.setVisibility("PRIVATE");
+        AppAdminUpdateRequest update = new AppAdminUpdateRequest();
+        update.setId(APP_ID);
+        update.setPriority(99);
+        assertError(
+                ErrorCode.PARAMS_ERROR,
+                () -> controller(user(200L, "admin")).updateAppByAdmin(update));
+        assertNull(saved);
+    }
+
+    @Test
     void adminCanChangeAnotherUsersPriority() {
+        app.setVisibility("PUBLIC");
         AppAdminUpdateRequest update = new AppAdminUpdateRequest();
         update.setId(APP_ID);
         update.setPriority(99);
@@ -155,19 +185,24 @@ class AppMetadataTest {
         AppAdminUpdateRequest update = new AppAdminUpdateRequest();
         update.setId(APP_ID);
         update.setPriority(-1);
-        assertError(ErrorCode.PARAMS_ERROR,
-            () -> controller(user(200L, "admin")).updateAppByAdmin(update));
+        assertError(
+                ErrorCode.PARAMS_ERROR,
+                () -> controller(user(200L, "admin")).updateAppByAdmin(update));
         assertNull(saved);
     }
 
     private AppController controller(User loginUser) {
-        UserService users = (UserService) Proxy.newProxyInstance(UserService.class.getClassLoader(),
-            new Class<?>[]{UserService.class}, (proxy, method, args) -> {
-                if ("getLoginUser".equals(method.getName())) {
-                    return loginUser;
-                }
-                throw new UnsupportedOperationException(method.getName());
-            });
+        UserService users =
+                (UserService)
+                        Proxy.newProxyInstance(
+                                UserService.class.getClassLoader(),
+                                new Class<?>[] {UserService.class},
+                                (proxy, method, args) -> {
+                                    if ("getLoginUser".equals(method.getName())) {
+                                        return loginUser;
+                                    }
+                                    throw new UnsupportedOperationException(method.getName());
+                                });
         AppController controller = new AppController();
         ReflectionTestUtils.setField(controller, "appService", service);
         ReflectionTestUtils.setField(controller, "userService", users);

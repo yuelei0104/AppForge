@@ -2,14 +2,12 @@ package com.yuelei.appforge.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.io.FileUtil;
-import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.yuelei.appforge.constant.AppConstant;
-import com.yuelei.appforge.core.AiCodeGeneratorFacade;
 import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.exception.ErrorCode;
 import com.yuelei.appforge.exception.ThrowUtils;
@@ -25,11 +23,14 @@ import com.yuelei.appforge.model.vo.AppVO;
 import com.yuelei.appforge.model.vo.UserVO;
 import com.yuelei.appforge.service.AppService;
 import com.yuelei.appforge.service.UserService;
-import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
+import com.yuelei.appforge.workspace.*;
+
 import jakarta.annotation.Resource;
 
-import java.io.File;
+import org.springframework.stereotype.Service;
+
+import reactor.core.publisher.Flux;
+
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -43,39 +44,35 @@ import java.util.stream.Collectors;
 @Service
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
-    /**
-     * 管理员列表允许排序的字段，避免直接拼接未校验的字段名
-     */
-    private static final Set<String> SORTABLE_FIELDS = Set.of(
-        "id", "appName", "cover", "initPrompt", "codeGenType",
-        "deployKey", "priority", "userId", "editTime", "createTime", "updateTime"
-    );
+    @Resource private AppWorkspaceService workspace;
+    @Resource private AppGenerationService generation;
+    @Resource private AppCatalogSearch catalog;
+    @Resource private AppNameService names;
 
-    @Resource
-    private UserService userService;
-
-    @Resource
-    private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+    @Resource private UserService userService;
 
     @Override
     public long addApp(AppAddRequest appAddRequest, User loginUser) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
-        ThrowUtils.throwIf(loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
+        ThrowUtils.throwIf(
+                loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
 
         // 校验初始化 prompt
         String initPrompt = StrUtil.trim(appAddRequest.getInitPrompt());
-        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
+        ThrowUtils.throwIf(
+                StrUtil.isBlank(initPrompt) || initPrompt.length() > 2000,
+                ErrorCode.PARAMS_ERROR,
+                "初始提示词为 1 至 2000 字");
 
         // 应用名称不填时使用默认名称
         String appName = StrUtil.trim(appAddRequest.getAppName());
         if (StrUtil.isBlank(appName)) {
-            appName = AppConstant.DEFAULT_APP_NAME;
+            appName = AppNameService.fallback(initPrompt);
         }
         ThrowUtils.throwIf(
-            appName.length() > AppConstant.APP_NAME_MAX_LENGTH,
-            ErrorCode.PARAMS_ERROR,
-            "应用名称不能超过 " + AppConstant.APP_NAME_MAX_LENGTH + " 个字符"
-        );
+                appName.length() > AppConstant.APP_NAME_MAX_LENGTH,
+                ErrorCode.PARAMS_ERROR,
+                "应用名称不能超过 " + AppConstant.APP_NAME_MAX_LENGTH + " 个字符");
 
         // 封面可为空
         String cover = StrUtil.trim(appAddRequest.getCover());
@@ -83,21 +80,19 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             cover = null;
         }
         ThrowUtils.throwIf(
-            cover != null && cover.length() > AppConstant.COVER_MAX_LENGTH,
-            ErrorCode.PARAMS_ERROR,
-            "应用封面地址不能超过 " + AppConstant.COVER_MAX_LENGTH + " 个字符"
-        );
+                cover != null && cover.length() > AppConstant.COVER_MAX_LENGTH,
+                ErrorCode.PARAMS_ERROR,
+                "应用封面地址不能超过 " + AppConstant.COVER_MAX_LENGTH + " 个字符");
 
         // 代码生成类型不填时默认 HTML 模式
         String codeGenType = StrUtil.trim(appAddRequest.getCodeGenType());
         if (StrUtil.isBlank(codeGenType)) {
-            codeGenType = CodeGenTypeEnum.HTML.getValue();
+            codeGenType = CodeGenTypeEnum.MULTI_FILE.getValue();
         }
         ThrowUtils.throwIf(
-            CodeGenTypeEnum.getEnumByValue(codeGenType) == null,
-            ErrorCode.PARAMS_ERROR,
-            "不支持的代码生成类型"
-        );
+                CodeGenTypeEnum.getEnumByValue(codeGenType) == null,
+                ErrorCode.PARAMS_ERROR,
+                "不支持的代码生成类型");
 
         App app = new App();
         app.setAppName(appName);
@@ -105,16 +100,34 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setInitPrompt(initPrompt);
         app.setCodeGenType(codeGenType);
         app.setPriority(0);
+        app.setDescription(AppPolicy.description(appAddRequest.getDescription()));
+        app.setTags(AppPolicy.encodeTags(appAddRequest.getTags()));
+        app.setVisibility(
+                appAddRequest.getVisibility() == null
+                        ? "PRIVATE"
+                        : AppPolicy.visibility(appAddRequest.getVisibility()));
+        app.setGenerationStatus("IDLE");
+        app.setGenerationError("");
+        app.setGenerationToken("");
+        app.setCurrentVersion(0);
+        app.setDeployedVersion(0);
+        app.setDeploymentStatus("OFFLINE");
+        app.setFeatureStatus("NONE");
+        app.setFeatureReason("");
         app.setUserId(loginUser.getId());
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "创建应用失败");
+        if (StrUtil.isBlank(appAddRequest.getAppName()))
+            names.suggest(app.getId(), initPrompt, appName);
         return app.getId();
     }
 
     @Override
     public boolean updateApp(AppUpdateRequest appUpdateRequest, User loginUser) {
-        ThrowUtils.throwIf(appUpdateRequest == null || appUpdateRequest.getId() == null,
-            ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        ThrowUtils.throwIf(
+                appUpdateRequest == null || appUpdateRequest.getId() == null,
+                ErrorCode.PARAMS_ERROR,
+                "应用 id 不能为空");
         ThrowUtils.throwIf(appUpdateRequest.getId() <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不合法");
 
         String appName = StrUtil.trim(appUpdateRequest.getAppName());
@@ -122,7 +135,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         validateAppNameLength(appName);
 
         App app = getAppById(appUpdateRequest.getId());
-        checkOwnership(app, loginUser);
+        AppPolicy.manage(app, loginUser);
 
         // 普通用户仅能更新白名单字段，不能修改优先级或应用归属。
         App updateApp = new App();
@@ -131,6 +144,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (appUpdateRequest.getCover() != null) {
             updateApp.setCover(validateCover(appUpdateRequest.getCover()));
         }
+        applyMetadata(
+                updateApp,
+                appUpdateRequest.getDescription(),
+                appUpdateRequest.getTags(),
+                appUpdateRequest.getVisibility());
         updateApp.setEditTime(LocalDateTime.now());
         boolean result = this.updateById(updateApp);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "更新应用失败");
@@ -141,79 +159,76 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     public boolean deleteApp(long id, User loginUser) {
         App app = getAppById(id);
         checkOwnership(app, loginUser);
-        boolean result = this.removeById(id);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "删除应用失败");
-        return true;
+        return workspace.delete(id, loginUser);
     }
 
     @Override
     public AppVO getAppVOById(long id, User loginUser) {
         App app = getAppById(id);
-        ThrowUtils.throwIf(loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
-        // 精选应用允许其他登录用户查看，写操作仍单独校验归属。
         ThrowUtils.throwIf(
-            !Objects.equals(app.getUserId(), loginUser.getId())
-                && !Objects.equals(app.getPriority(), AppConstant.GOOD_APP_PRIORITY),
-            ErrorCode.NO_AUTH_ERROR,
-            "无权查看该应用"
-        );
-        return getAppVO(app);
+                loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
+        // 精选应用允许其他登录用户查看，写操作仍单独校验归属。
+        ThrowUtils.throwIf(!AppPolicy.canRead(app, loginUser), ErrorCode.NO_AUTH_ERROR, "无权查看该应用");
+        if (AppPolicy.isOwner(app, loginUser)
+                && Integer.valueOf(0).equals(app.getCurrentVersion())
+                && "IDLE".equals(app.getGenerationStatus())) {
+            int baseline = workspace.ensureBaseline(id);
+            if (baseline > 0) {
+                app.setCurrentVersion(baseline);
+                app.setGenerationStatus("SUCCEEDED");
+            }
+        }
+        AppVO vo = getAppVO(app);
+        if (!AppPolicy.isOwner(app, loginUser) && !AppPolicy.isAdmin(loginUser)) {
+            vo.setInitPrompt(null);
+            vo.setGenerationError(null);
+        }
+        return vo;
     }
 
     @Override
     public Page<AppVO> listMyAppByPage(AppQueryRequest appQueryRequest, User loginUser) {
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-        ThrowUtils.throwIf(loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
+        ThrowUtils.throwIf(
+                loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
         validatePage(appQueryRequest, AppConstant.USER_PAGE_SIZE_LIMIT);
 
-        QueryWrapper queryWrapper = QueryWrapper.create()
-            .eq("userId", loginUser.getId())
-            .orderBy("createTime", false);
-        String appName = StrUtil.trim(appQueryRequest.getAppName());
-        if (StrUtil.isNotBlank(appName)) {
-            queryWrapper.like("appName", appName);
-        }
-
-        Page<App> appPage = this.page(
-            Page.of(appQueryRequest.getPageNum(), appQueryRequest.getPageSize()),
-            queryWrapper
-        );
-        return buildAppVOPage(appPage, appQueryRequest.getPageNum(), appQueryRequest.getPageSize());
+        return buildAppVOPage(
+                catalog.search(appQueryRequest, loginUser.getId(), false, false),
+                appQueryRequest.getPageNum(),
+                appQueryRequest.getPageSize());
     }
 
     @Override
-    public Page<AppVO> listFeaturedAppByPage(AppQueryRequest appQueryRequest) {
-        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-        validatePage(appQueryRequest, AppConstant.USER_PAGE_SIZE_LIMIT);
+    public Page<AppVO> listFeaturedAppByPage(AppQueryRequest request) {
+        return buildAppVOPage(
+                catalog.search(request, null, true, true),
+                request.getPageNum(),
+                request.getPageSize());
+    }
 
-        QueryWrapper queryWrapper = QueryWrapper.create()
-            .gt("priority", 0)
-            .orderBy("priority", false)
-            .orderBy("createTime", false);
-        String appName = StrUtil.trim(appQueryRequest.getAppName());
-        if (StrUtil.isNotBlank(appName)) {
-            queryWrapper.like("appName", appName);
-        }
-
-        Page<App> appPage = this.page(
-            Page.of(appQueryRequest.getPageNum(), appQueryRequest.getPageSize()),
-            queryWrapper
-        );
-        return buildAppVOPage(appPage, appQueryRequest.getPageNum(), appQueryRequest.getPageSize());
+    @Override
+    public Page<AppVO> listPublicAppByPage(AppQueryRequest request) {
+        return buildAppVOPage(
+                catalog.search(request, null, true, false),
+                request.getPageNum(),
+                request.getPageSize());
     }
 
     @Override
     public boolean adminDeleteApp(long id) {
-        getAppById(id);
-        boolean result = this.removeById(id);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "删除应用失败");
-        return true;
+        User admin = new User();
+        admin.setId(1L);
+        admin.setUserRole("admin");
+        return workspace.delete(id, admin);
     }
 
     @Override
     public boolean adminUpdateApp(AppAdminUpdateRequest appAdminUpdateRequest) {
-        ThrowUtils.throwIf(appAdminUpdateRequest == null || appAdminUpdateRequest.getId() == null,
-            ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        ThrowUtils.throwIf(
+                appAdminUpdateRequest == null || appAdminUpdateRequest.getId() == null,
+                ErrorCode.PARAMS_ERROR,
+                "应用 id 不能为空");
         ThrowUtils.throwIf(appAdminUpdateRequest.getId() <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不合法");
 
         App app = getAppById(appAdminUpdateRequest.getId());
@@ -235,14 +250,30 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
         if (appAdminUpdateRequest.getPriority() != null) {
             ThrowUtils.throwIf(
-                appAdminUpdateRequest.getPriority() < 0,
-                ErrorCode.PARAMS_ERROR,
-                "优先级不能小于 0"
-            );
+                    appAdminUpdateRequest.getPriority() < 0, ErrorCode.PARAMS_ERROR, "优先级不能小于 0");
             updateApp.setPriority(appAdminUpdateRequest.getPriority());
             hasUpdate = true;
         }
 
+        if (appAdminUpdateRequest.getDescription() != null
+                || appAdminUpdateRequest.getTags() != null
+                || appAdminUpdateRequest.getVisibility() != null) {
+            applyMetadata(
+                    updateApp,
+                    appAdminUpdateRequest.getDescription(),
+                    appAdminUpdateRequest.getTags(),
+                    appAdminUpdateRequest.getVisibility());
+            hasUpdate = true;
+        }
+        if (updateApp.getPriority() != null && updateApp.getPriority() >= 99) {
+            ThrowUtils.throwIf(
+                    !"PUBLIC".equals(updateApp.getVisibility()) && !AppPolicy.isPublic(app),
+                    ErrorCode.PARAMS_ERROR,
+                    "私有应用不能加入精选或置顶");
+            updateApp.setFeatureStatus("APPROVED");
+        } else if (updateApp.getPriority() != null) {
+            updateApp.setFeatureStatus("NONE");
+        }
         // 没有需要更新的字段，直接返回成功
         if (!hasUpdate) {
             return true;
@@ -259,19 +290,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
         validatePage(appQueryRequest, 0);
 
-        QueryWrapper queryWrapper = getQueryWrapper(appQueryRequest);
-        String sortField = StrUtil.trim(appQueryRequest.getSortField());
-        if (StrUtil.isNotBlank(sortField) && SORTABLE_FIELDS.contains(sortField)) {
-            queryWrapper.orderBy(sortField, "ascend".equals(appQueryRequest.getSortOrder()));
-        } else {
-            queryWrapper.orderBy("createTime", false);
-        }
-
-        Page<App> appPage = this.page(
-            Page.of(appQueryRequest.getPageNum(), appQueryRequest.getPageSize()),
-            queryWrapper
-        );
-        return buildAppVOPage(appPage, appQueryRequest.getPageNum(), appQueryRequest.getPageSize());
+        Page<App> page = catalog.search(appQueryRequest, null, false, false);
+        Page<AppVO> result =
+                buildAppVOPage(page, appQueryRequest.getPageNum(), appQueryRequest.getPageSize());
+        Map<Long, App> originals =
+                page.getRecords().stream().collect(Collectors.toMap(App::getId, value -> value));
+        result.getRecords()
+                .forEach(vo -> vo.setInitPrompt(originals.get(vo.getId()).getInitPrompt()));
+        return result;
     }
 
     @Override
@@ -285,7 +311,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             return null;
         }
         AppVO appVO = new AppVO();
-        BeanUtil.copyProperties(app, appVO);
+        BeanUtil.copyProperties(app, appVO, "tags");
+        appVO.setTags(AppPolicy.decodeTags(app.getTags()));
         // 关联查询用户信息
         Long userId = app.getUserId();
         if (userId != null) {
@@ -296,26 +323,31 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return appVO;
     }
 
-
     @Override
     public List<AppVO> getAppVOList(List<App> appList) {
         if (CollUtil.isEmpty(appList)) {
             return new ArrayList<>();
         }
         // 批量获取用户信息，避免 N+1 查询问题
-        Set<Long> userIds = appList.stream()
-            .map(App::getUserId)
-            .collect(Collectors.toSet());
-        Map<Long, UserVO> userVOMap = userService.listByIds(userIds).stream()
-            .collect(Collectors.toMap(User::getId, userService::getUserVO));
-        return appList.stream().map(app -> {
-            AppVO appVO = getAppVO(app);
-            UserVO userVO = userVOMap.get(app.getUserId());
-            appVO.setUser(userVO);
-            return appVO;
-        }).collect(Collectors.toList());
+        Set<Long> userIds = appList.stream().map(App::getUserId).collect(Collectors.toSet());
+        Map<Long, UserVO> userVOMap =
+                userService.listByIds(userIds).stream()
+                        .collect(Collectors.toMap(User::getId, userService::getUserVO));
+        return appList.stream()
+                .map(
+                        app -> {
+                            AppVO appVO = new AppVO();
+                            BeanUtil.copyProperties(app, appVO, "tags");
+                            appVO.setTags(AppPolicy.decodeTags(app.getTags()));
+                            // 列表不返回初始提示词或模型错误，减少公开信息暴露。
+                            appVO.setInitPrompt(null);
+                            appVO.setGenerationError(null);
+                            UserVO userVO = userVOMap.get(app.getUserId());
+                            appVO.setUser(userVO);
+                            return appVO;
+                        })
+                .collect(Collectors.toList());
     }
-
 
     @Override
     public QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest) {
@@ -333,21 +365,17 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         String sortField = appQueryRequest.getSortField();
         String sortOrder = appQueryRequest.getSortOrder();
         return QueryWrapper.create()
-            .eq("id", id)
-            .like("appName", appName)
-            .like("cover", cover)
-            .like("initPrompt", initPrompt)
-            .eq("codeGenType", codeGenType)
-            .eq("deployKey", deployKey)
-            .eq("priority", priority)
-            .eq("userId", userId)
-            .orderBy(sortField, "ascend".equals(sortOrder));
+                .eq("id", id)
+                .like("appName", appName)
+                .like("cover", cover)
+                .like("initPrompt", initPrompt)
+                .eq("codeGenType", codeGenType)
+                .eq("deployKey", deployKey)
+                .eq("priority", priority)
+                .eq("userId", userId);
     }
 
-
-    /**
-     * 根据 id 获取应用，不存在则抛异常
-     */
+    /** 根据 id 获取应用，不存在则抛异常 */
     private App getAppById(long id) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不合法");
         App app = this.getById(id);
@@ -355,41 +383,39 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return app;
     }
 
-    /**
-     * 校验应用归属
-     */
+    /** 校验应用归属 */
     private void checkOwnership(App app, User loginUser) {
-        ThrowUtils.throwIf(loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
         ThrowUtils.throwIf(
-            !Objects.equals(app.getUserId(), loginUser.getId()),
-            ErrorCode.NO_AUTH_ERROR,
-            "无权操作该应用"
-        );
+                loginUser == null || loginUser.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
+        ThrowUtils.throwIf(
+                !Objects.equals(app.getUserId(), loginUser.getId()),
+                ErrorCode.NO_AUTH_ERROR,
+                "无权操作该应用");
     }
 
-    /**
-     * 校验应用名称长度
-     */
+    /** 校验应用名称长度 */
     private void validateAppNameLength(String appName) {
         ThrowUtils.throwIf(
-            appName.length() > AppConstant.APP_NAME_MAX_LENGTH,
-            ErrorCode.PARAMS_ERROR,
-            "应用名称不能超过 " + AppConstant.APP_NAME_MAX_LENGTH + " 个字符"
-        );
+                appName.length() > AppConstant.APP_NAME_MAX_LENGTH,
+                ErrorCode.PARAMS_ERROR,
+                "应用名称不能超过 " + AppConstant.APP_NAME_MAX_LENGTH + " 个字符");
     }
 
     /** 校验图片链接；空字符串用于清除封面。 */
     private String validateCover(String value) {
         String cover = StrUtil.trimToEmpty(value);
-        ThrowUtils.throwIf(cover.length() > AppConstant.COVER_MAX_LENGTH,
-            ErrorCode.PARAMS_ERROR, "应用封面地址不能超过 " + AppConstant.COVER_MAX_LENGTH + " 个字符");
+        ThrowUtils.throwIf(
+                cover.length() > AppConstant.COVER_MAX_LENGTH,
+                ErrorCode.PARAMS_ERROR,
+                "应用封面地址不能超过 " + AppConstant.COVER_MAX_LENGTH + " 个字符");
         if (cover.isEmpty()) {
             return cover;
         }
         try {
             URI uri = URI.create(cover);
-            if (("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
-                && StrUtil.isNotBlank(uri.getHost())) {
+            if (("http".equalsIgnoreCase(uri.getScheme())
+                            || "https".equalsIgnoreCase(uri.getScheme()))
+                    && StrUtil.isNotBlank(uri.getHost())) {
                 return cover;
             }
         } catch (IllegalArgumentException ignored) {
@@ -402,96 +428,56 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
      * 校验分页参数
      *
      * @param appQueryRequest 查询请求
-     * @param maxPageSize     每页最大数量，0 表示不限制
+     * @param maxPageSize 每页最大数量，0 表示不限制
      */
     private void validatePage(AppQueryRequest appQueryRequest, int maxPageSize) {
         ThrowUtils.throwIf(appQueryRequest.getPageNum() < 1, ErrorCode.PARAMS_ERROR, "页码必须大于 0");
         ThrowUtils.throwIf(appQueryRequest.getPageSize() < 1, ErrorCode.PARAMS_ERROR, "每页数量必须大于 0");
         if (maxPageSize > 0) {
             ThrowUtils.throwIf(
-                appQueryRequest.getPageSize() > maxPageSize,
-                ErrorCode.PARAMS_ERROR,
-                "每页最多查询 " + maxPageSize + " 条"
-            );
+                    appQueryRequest.getPageSize() > maxPageSize,
+                    ErrorCode.PARAMS_ERROR,
+                    "每页最多查询 " + maxPageSize + " 条");
         }
     }
 
-    /**
-     * 将应用实体分页转换为 VO 分页
-     */
+    /** 将应用实体分页转换为 VO 分页 */
     private Page<AppVO> buildAppVOPage(Page<App> appPage, int pageNum, int pageSize) {
         Page<AppVO> appVOPage = new Page<>(pageNum, pageSize, appPage.getTotalRow());
         appVOPage.setRecords(getAppVOList(appPage.getRecords()));
         return appVOPage;
     }
 
+    private void applyMetadata(
+            App update, String description, List<String> tags, String visibility) {
+        if (description != null) update.setDescription(AppPolicy.description(description));
+        if (tags != null) update.setTags(AppPolicy.encodeTags(tags));
+        if (visibility != null) {
+            update.setVisibility(AppPolicy.visibility(visibility));
+            if ("PRIVATE".equals(visibility)) {
+                update.setPriority(0);
+                update.setFeatureStatus("NONE");
+                update.setFeatureReason("");
+            }
+        }
+    }
+
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
-        // 1. 参数校验
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
-        // 2. 查询应用信息
-        App app = this.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在：" + appId);
-        // 3. 验证用户是否有权限访问该应用，仅本人可以生成代码
-        if (!app.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
-        }
-        // 4. 获取应用的代码生成类型
-        String codeGenTypeStr = app.getCodeGenType();
-        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
-        if (codeGenTypeEnum == null) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
-        }
-        // 5. 调用 AI 生成代码
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        ThrowUtils.throwIf(
+                appId == null || appId <= 0 || StrUtil.isBlank(message) || message.length() > 2000,
+                ErrorCode.PARAMS_ERROR,
+                "应用 ID 或消息无效，消息最多 2000 字");
+        App app = getAppById(appId);
+        AppPolicy.owner(app, loginUser);
+        return generation.generate(app, message);
     }
+
     @Override
     public String deployApp(Long appId, User loginUser) {
-        // 1. 参数校验
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
-        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
-        // 2. 查询应用信息
-        App app = this.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在：" + appId);
-        // 3. 验证用户是否有权限部署该应用，仅本人可以部署
-        if (!app.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限部署该应用");
-        }
-        // 4. 检查是否已有 deployKey
-        String deployKey = app.getDeployKey();
-        // 没有则生成 6 位 deployKey（大小写字母 + 数字）
-        if (StrUtil.isBlank(deployKey)) {
-            deployKey = RandomUtil.randomString(6);
-        }
-        // 5. 获取代码生成类型，构建源目录路径
-        String codeGenType = app.getCodeGenType();
-        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
-        ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.SYSTEM_ERROR, "应用代码生成类型不合法");
-        String sourceDirName = codeGenTypeEnum.getValue() + "_" + appId;
-        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
-        // 6. 检查源目录是否存在
-        File sourceDir = new File(sourceDirPath);
-        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
-        }
-        // 7. 复制文件到部署目录
-        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
-        try {
-            FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
-        } catch (Exception e) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：" + e.getMessage());
-        }
-        // 8. 更新应用的 deployKey 和部署时间
-        App updateApp = new App();
-        updateApp.setId(appId);
-        updateApp.setDeployKey(deployKey);
-        updateApp.setDeployedTime(LocalDateTime.now());
-        boolean updateResult = this.updateById(updateApp);
-        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
-        // 9. 返回部署标识，由 Controller 拼接当前访问域名
-        return deployKey;
+        ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR);
+        App app = getAppById(appId);
+        AppPolicy.owner(app, loginUser);
+        return workspace.deploy(appId, loginUser);
     }
-
 }
-

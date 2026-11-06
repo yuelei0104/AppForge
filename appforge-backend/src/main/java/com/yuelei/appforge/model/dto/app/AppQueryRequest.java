@@ -1,6 +1,7 @@
 package com.yuelei.appforge.model.dto.app;
 
 import com.yuelei.appforge.common.PageRequest;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -9,7 +10,7 @@ import java.io.Serializable;
 /**
  * 应用查询请求。
  *
- * <p>支持除时间外的所有应用字段查询。</p>
+ * <p>支持除时间外的所有应用字段查询。
  *
  * @author yuelei
  */
@@ -17,45 +18,35 @@ import java.io.Serializable;
 @Data
 public class AppQueryRequest extends PageRequest implements Serializable {
 
-    /**
-     * id
-     */
+    /** id */
     private Long id;
 
-    /**
-     * 应用名称
-     */
+    /** 应用名称 */
     private String appName;
 
-    /**
-     * 应用封面
-     */
+    /** 应用封面 */
     private String cover;
 
-    /**
-     * 应用初始化的 prompt
-     */
+    /** 应用初始化的 prompt */
     private String initPrompt;
 
-    /**
-     * 代码生成类型
-     */
+    /** 代码生成类型 */
     private String codeGenType;
 
-    /**
-     * 部署标识
-     */
+    /** 部署标识 */
     private String deployKey;
 
-    /**
-     * 优先级
-     */
+    /** 优先级 */
     private Integer priority;
 
-    /**
-     * 创建用户 id
-     */
+    /** 创建用户 id */
     private Long userId;
+
+    private String searchText;
+    private String tag;
+    private String visibility;
+    private String featureStatus;
+    private String generationStatus;
 
     private static final long serialVersionUID = 1L;
 }

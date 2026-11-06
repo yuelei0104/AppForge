@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { reviewFeatured, type AppInfo, type AppFilters } from '@/api/workspace'
+import { featureLabel, generationLabel } from '@/utils/appStatus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -10,11 +12,11 @@ import { formatDateTime } from '@/utils/date'
 
 const router = useRouter()
 
-const data = ref<API.AppVO[]>([])
+const data = ref<AppInfo[]>([])
 const total = ref(0)
 const loading = ref(false)
 
-const searchParams = reactive<API.AppQueryRequest>({
+const searchParams = reactive<AppFilters>({
   pageNum: 1,
   pageSize: 10,
   appName: '',
@@ -30,10 +32,13 @@ const columns: TableColumnsType = [
   { title: '初始化 Prompt', dataIndex: 'initPrompt', key: 'initPrompt', ellipsis: true },
   { title: '生成类型', dataIndex: 'codeGenType', key: 'codeGenType', width: 120 },
   { title: '部署标识', dataIndex: 'deployKey', key: 'deployKey', width: 120 },
+  { title: '可见范围', dataIndex: 'visibility', key: 'visibility', width: 90 },
+  { title: '生成状态', dataIndex: 'generationStatus', key: 'generationStatus', width: 100 },
+  { title: '精选申请', dataIndex: 'featureStatus', key: 'featureStatus', width: 100 },
   { title: '优先级', dataIndex: 'priority', key: 'priority', width: 100 },
   { title: '创建用户', key: 'user', width: 150 },
   { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 170 },
-  { title: '操作', key: 'action', width: 250, fixed: 'right' },
+  { title: '操作', key: 'action', width: 410, fixed: 'right' },
 ]
 
 const pagination = computed<TablePaginationConfig>(() => ({
@@ -48,7 +53,7 @@ const pagination = computed<TablePaginationConfig>(() => ({
 async function fetchData() {
   loading.value = true
   try {
-    const params: API.AppQueryRequest = { ...searchParams }
+    const params: AppFilters = { ...searchParams }
     if (!params.appName) {
       delete params.appName
     }
@@ -99,6 +104,8 @@ function resetSearch() {
   searchParams.cover = ''
   searchParams.initPrompt = ''
   searchParams.deployKey = ''
+  searchParams.featureStatus = undefined
+  searchParams.visibility = undefined
   searchParams.priority = undefined
   searchParams.codeGenType = undefined
   searchParams.pageNum = 1
@@ -111,15 +118,15 @@ function doTableChange(page: TablePaginationConfig) {
   void fetchData()
 }
 
-function handleEdit(app: API.AppVO) {
+function handleEdit(app: AppInfo) {
   void router.push(`/app/edit/${String(app.id)}`)
 }
 
-async function handleFeature(app: API.AppVO) {
+async function handleFeature(app: AppInfo) {
   if (app.id == null) {
     return
   }
-  const targetPriority = app.priority === 99 ? 0 : 99
+  const targetPriority = (app.priority ?? 0) >= 99 ? 0 : 99
   try {
     const res = await updateAppByAdmin({ id: app.id, priority: targetPriority })
     if (res.data.code === 0) {
@@ -133,7 +140,52 @@ async function handleFeature(app: API.AppVO) {
   }
 }
 
-async function handleDelete(app: API.AppVO) {
+const reviewOpen = ref(false),
+  reviewSaving = ref(false),
+  reviewApproved = ref(true)
+const reviewApp = ref<AppInfo | null>(null),
+  reviewReason = ref('')
+function openReview(app: AppInfo, approved: boolean) {
+  reviewApp.value = app
+  reviewApproved.value = approved
+  reviewReason.value = ''
+  reviewOpen.value = true
+}
+async function confirmReview() {
+  if (!reviewApp.value?.id || reviewSaving.value) return
+  reviewSaving.value = true
+  try {
+    const res = await reviewFeatured(
+      String(reviewApp.value.id),
+      reviewApproved.value,
+      reviewReason.value.trim(),
+    )
+    if (res.data.code !== 0) throw new Error(res.data.message)
+    reviewOpen.value = false
+    message.success('审核完成')
+    await fetchData()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '审核失败')
+  } finally {
+    reviewSaving.value = false
+  }
+}
+async function handlePin(app: AppInfo) {
+  if (app.id == null) return
+  try {
+    const res = await updateAppByAdmin({
+      id: app.id,
+      priority: (app.priority ?? 0) >= 999 ? 99 : 999,
+    })
+    if (res.data.code !== 0) throw new Error(res.data.message)
+    message.success((app.priority ?? 0) >= 999 ? '已取消置顶' : '已置顶')
+    await fetchData()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '置顶失败')
+  }
+}
+
+async function handleDelete(app: AppInfo) {
   if (app.id == null) {
     return
   }
@@ -181,6 +233,31 @@ onMounted(() => {
       <a-form-item label="部署标识">
         <a-input v-model:value="searchParams.deployKey" placeholder="输入部署标识" allow-clear />
       </a-form-item>
+      <a-form-item label="精选申请">
+        <a-select
+          v-model:value="searchParams.featureStatus"
+          placeholder="全部"
+          allow-clear
+          style="width: 130px"
+          :options="[
+            { value: 'PENDING', label: '待审核' },
+            { value: 'APPROVED', label: '已通过' },
+            { value: 'REJECTED', label: '未通过' },
+          ]"
+        />
+      </a-form-item>
+      <a-form-item label="可见范围">
+        <a-select
+          v-model:value="searchParams.visibility"
+          placeholder="全部"
+          allow-clear
+          style="width: 120px"
+          :options="[
+            { value: 'PUBLIC', label: '公开' },
+            { value: 'PRIVATE', label: '私有' },
+          ]"
+        />
+      </a-form-item>
       <a-form-item label="优先级">
         <a-select
           v-model:value="searchParams.priority"
@@ -190,6 +267,7 @@ onMounted(() => {
         >
           <a-select-option :value="0">普通</a-select-option>
           <a-select-option :value="99">精选</a-select-option>
+          <a-select-option :value="999">置顶</a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item label="生成类型">
@@ -217,7 +295,7 @@ onMounted(() => {
       :data-source="data"
       :loading="loading"
       :pagination="pagination"
-      :scroll="{ x: 1500 }"
+      :scroll="{ x: 2050 }"
       @change="doTableChange"
     >
       <template #bodyCell="{ column, record }">
@@ -241,9 +319,20 @@ onMounted(() => {
             {{ record.codeGenType === 'multi_file' ? '多文件' : 'HTML' }}
           </a-tag>
         </template>
+        <template v-else-if="column.dataIndex === 'visibility'">{{
+          record.visibility === 'PUBLIC' ? '公开' : '私有'
+        }}</template>
+        <template v-else-if="column.dataIndex === 'generationStatus'">{{
+          generationLabel(record.generationStatus)
+        }}</template>
+        <template v-else-if="column.dataIndex === 'featureStatus'"
+          ><a-tag :color="record.featureStatus === 'PENDING' ? 'orange' : 'default'">{{
+            featureLabel(record.featureStatus)
+          }}</a-tag></template
+        >
         <template v-else-if="column.dataIndex === 'priority'">
-          <a-tag :color="record.priority === 99 ? 'gold' : 'default'">
-            {{ record.priority === 99 ? '精选' : '普通' }}
+          <a-tag :color="record.priority >= 99 ? 'gold' : 'default'">
+            {{ record.priority >= 999 ? '置顶' : record.priority >= 99 ? '精选' : '普通' }}
           </a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'deployKey'">
@@ -256,7 +345,29 @@ onMounted(() => {
           <UserInfo :user="record.user" :size="24" />
         </template>
         <template v-else-if="column.key === 'action'">
-          <a-space :size="4">
+          <a-space :size="4" wrap>
+            <a-button
+              v-if="record.featureStatus === 'PENDING'"
+              type="link"
+              size="small"
+              @click="openReview(record, true)"
+              >通过</a-button
+            >
+            <a-button
+              v-if="record.featureStatus === 'PENDING'"
+              type="link"
+              size="small"
+              danger
+              @click="openReview(record, false)"
+              >拒绝</a-button
+            >
+            <a-button
+              v-if="record.visibility === 'PUBLIC'"
+              type="link"
+              size="small"
+              @click="handlePin(record)"
+              >{{ record.priority >= 999 ? '取消置顶' : '置顶' }}</a-button
+            >
             <a-button type="link" size="small" @click="handleEdit(record)">
               <template #icon>
                 <EditOutlined />
@@ -267,7 +378,7 @@ onMounted(() => {
               <template #icon>
                 <StarOutlined />
               </template>
-              {{ record.priority === 99 ? '取消精选' : '精选' }}
+              {{ record.priority >= 99 ? '取消精选' : '精选' }}
             </a-button>
             <a-popconfirm
               title="确定删除该应用吗？"
@@ -286,6 +397,21 @@ onMounted(() => {
         </template>
       </template>
     </a-table>
+    <a-modal
+      v-model:open="reviewOpen"
+      :title="reviewApproved ? '通过精选申请' : '拒绝精选申请'"
+      :confirm-loading="reviewSaving"
+      @ok="confirmReview"
+    >
+      <p>{{ reviewApp?.appName }}</p>
+      <a-textarea
+        v-model:value="reviewReason"
+        :maxlength="256"
+        show-count
+        placeholder="填写审核说明（可选）"
+        :rows="3"
+      />
+    </a-modal>
   </a-card>
 </template>
 

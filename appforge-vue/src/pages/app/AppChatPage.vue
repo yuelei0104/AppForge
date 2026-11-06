@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
+import { generationLabel } from '@/utils/appStatus'
+import VersionHistoryDrawer from '@/components/VersionHistoryDrawer.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -8,6 +11,8 @@ import {
   DownOutlined,
   EditOutlined,
   HomeOutlined,
+  HistoryOutlined,
+  StopOutlined,
   InfoCircleOutlined,
   LinkOutlined,
   SendOutlined,
@@ -33,7 +38,7 @@ interface ChatMessage {
   role: 'user' | 'ai'
   content: string
   time: string
-  status?: 'streaming' | 'done' | 'error'
+  status?: 'streaming' | 'done' | 'error' | 'stopped'
 }
 
 const route = useRoute()
@@ -42,7 +47,7 @@ const loginUserStore = useLoginUserStore()
 
 const appId = computed(() => String(route.params.appId ?? ''))
 const isViewMode = computed(() => route.query.view === '1')
-const app = ref<API.AppVO | null>(null)
+const app = ref<AppInfo | null>(null)
 const appLoading = ref(true)
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
@@ -59,6 +64,84 @@ const deployModalOpen = ref(false)
 const deployUrl = ref('')
 const detailsOpen = ref(false)
 const deleting = ref(false)
+const historyOpen = ref(false)
+const actionLoading = ref(false)
+const stopping = ref(false)
+const isGenerating = computed(() => streaming.value || app.value?.generationStatus === 'GENERATING')
+let statusTimer: ReturnType<typeof setTimeout> | undefined
+let activeMessage: ChatMessage | null = null
+
+async function refreshApp() {
+  const sequence = loadSequence
+  try {
+    const result = isAdmin.value
+      ? await getAppVoByIdByAdmin({ id: appId.value })
+      : await getAppVoById({ id: appId.value })
+    if (sequence === loadSequence && result.data.code === 0 && result.data.data) {
+      const previousVersion = app.value?.currentVersion
+      app.value = result.data.data
+      if (
+        !streaming.value &&
+        app.value.currentVersion &&
+        previousVersion !== app.value.currentVersion
+      ) {
+        previewUrl.value = `${getAppPreviewUrl(appId.value)}?t=${Date.now()}`
+        previewVisible.value = true
+        previewKey.value += 1
+      }
+    }
+  } catch {
+    /* 临时轮询失败时保留页面，SSE 仍独立处理完成和失败。 */
+  }
+}
+function scheduleStatus() {
+  clearTimeout(statusTimer)
+  if (!isGenerating.value) return
+  statusTimer = setTimeout(async () => {
+    await refreshApp()
+    scheduleStatus()
+  }, 3000)
+}
+async function handleStop() {
+  if (!isOwner.value || stopping.value) return
+  stopping.value = true
+  try {
+    const res = await stopGeneration(appId.value)
+    if (res.data.code !== 0) throw new Error(res.data.message)
+    closeStream()
+    streaming.value = false
+    previewLoading.value = false
+    if (activeMessage) activeMessage.status = 'stopped'
+    if (app.value) app.value.generationStatus = 'STOPPED'
+    await refreshApp()
+    message.info('已停止生成，未保存不完整代码')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '停止失败，请重试')
+  } finally {
+    stopping.value = false
+  }
+}
+async function handleWorkspaceAction(kind: 'offline' | 'feature') {
+  if (actionLoading.value || isGenerating.value) return
+  actionLoading.value = true
+  try {
+    const res =
+      kind === 'offline' ? await undeployApp(appId.value) : await applyFeatured(appId.value)
+    if (res.data.code !== 0) throw new Error(res.data.message)
+    message.success(kind === 'offline' ? '应用已下线' : '精选申请已提交')
+    await refreshApp()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '操作失败')
+  } finally {
+    actionLoading.value = false
+  }
+}
+async function handleRestored() {
+  await refreshApp()
+  previewUrl.value = `${getAppPreviewUrl(appId.value)}?t=${Date.now()}`
+  previewVisible.value = true
+  previewKey.value += 1
+}
 
 let eventSource: EventSource | null = null
 let messageSeed = 0
@@ -110,6 +193,8 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
   streaming.value = false
   previewLoading.value = false
   closeStream()
+  if (app.value) app.value.generationStatus = success ? 'SUCCEEDED' : 'FAILED'
+  void refreshApp()
 
   if (success) {
     aiMessage.status = 'done'
@@ -156,6 +241,36 @@ function openEventSource(userMessage: string, aiMessage: ChatMessage) {
     }
   })
 
+  es.addEventListener('generation-error', (event) => {
+    if (eventSource !== es) return
+    let errorText = '模型生成失败，请稍后重试'
+    try {
+      errorText = JSON.parse((event as MessageEvent).data).message || errorText
+    } catch {
+      /* 保留默认说明 */
+    }
+    streaming.value = false
+    previewLoading.value = false
+    aiMessage.status = 'error'
+    if (!aiMessage.content) aiMessage.content = errorText
+    if (app.value) {
+      app.value.generationStatus = 'FAILED'
+      app.value.generationError = errorText
+    }
+    closeStream()
+    message.error(errorText)
+    void refreshApp()
+  })
+  es.addEventListener('stopped', () => {
+    if (eventSource !== es) return
+    streaming.value = false
+    previewLoading.value = false
+    aiMessage.status = 'stopped'
+    if (app.value) app.value.generationStatus = 'STOPPED'
+    closeStream()
+    void refreshApp()
+  })
+
   es.onerror = () => {
     if (eventSource === es && streaming.value) {
       finishStream(aiMessage, false)
@@ -176,7 +291,7 @@ function sendMessage(rawMessage: string) {
   if (deployLoading.value || deleting.value) {
     return
   }
-  if (streaming.value) {
+  if (isGenerating.value) {
     message.warning('AI 正在生成中，请稍候')
     return
   }
@@ -195,6 +310,11 @@ function sendMessage(rawMessage: string) {
     time: formatTime(),
     status: 'streaming',
   })
+  activeMessage = aiMessage
+  if (app.value) {
+    app.value.generationStatus = 'GENERATING'
+    app.value.generationError = ''
+  }
   messages.value.push(userMessage, aiMessage)
   input.value = ''
   streaming.value = true
@@ -217,6 +337,9 @@ function handleComposerKeydown(event: KeyboardEvent) {
 
 async function loadApp() {
   const sequence = ++loadSequence
+  clearTimeout(statusTimer)
+  historyOpen.value = false
+  activeMessage = null
   deployModalOpen.value = false
   deployUrl.value = ''
   deployLoading.value = false
@@ -244,7 +367,12 @@ async function loadApp() {
     }
     if (res.data.code === 0 && res.data.data) {
       app.value = res.data.data
-      if (isViewMode.value || !isOwner.value) {
+      if (
+        isViewMode.value ||
+        !isOwner.value ||
+        (app.value.generationStatus && app.value.generationStatus !== 'IDLE') ||
+        (app.value.currentVersion || 0) > 0
+      ) {
         previewUrl.value = getAppPreviewUrl(appId.value)
         previewVisible.value = true
         previewKey.value += 1
@@ -274,7 +402,7 @@ async function loadApp() {
 }
 
 async function handleDeploy() {
-  if (!app.value || !isOwner.value || streaming.value || deleting.value || deployLoading.value) {
+  if (!app.value || !isOwner.value || isGenerating.value || deleting.value || deployLoading.value) {
     return
   }
   const id = appId.value
@@ -333,7 +461,7 @@ function handleAppMenuClick({ key }: { key: string | number }) {
 }
 
 function handleEditApp() {
-  if (!canManage.value || streaming.value || deployLoading.value || deleting.value) {
+  if (!canManage.value || isGenerating.value || deployLoading.value || deleting.value) {
     return
   }
   detailsOpen.value = false
@@ -341,7 +469,13 @@ function handleEditApp() {
 }
 
 async function handleDeleteApp() {
-  if (!app.value || !canManage.value || streaming.value || deployLoading.value || deleting.value) {
+  if (
+    !app.value ||
+    !canManage.value ||
+    isGenerating.value ||
+    deployLoading.value ||
+    deleting.value
+  ) {
     return
   }
   const id = appId.value
@@ -372,7 +506,10 @@ watch(
   { immediate: true },
 )
 
+watch(isGenerating, scheduleStatus)
+
 onBeforeUnmount(() => {
+  clearTimeout(statusTimer)
   loadSequence += 1
   closeStream()
   streaming.value = false
@@ -399,7 +536,7 @@ onBeforeUnmount(() => {
               <a-menu-item
                 v-if="canManage"
                 key="edit"
-                :disabled="streaming || deployLoading || deleting"
+                :disabled="isGenerating || deployLoading || deleting"
               >
                 <EditOutlined />
                 编辑应用信息
@@ -412,10 +549,16 @@ onBeforeUnmount(() => {
           </template>
         </a-dropdown>
 
-        <a-tag v-if="streaming" color="processing">AI 生成中</a-tag>
+        <a-tag :color="isGenerating ? 'processing' : 'default'"
+          >{{ generationLabel(app?.generationStatus)
+          }}<template v-if="app?.currentVersion"> · v{{ app.currentVersion }}</template></a-tag
+        >
       </div>
 
       <div class="app-chat-page__topbar-actions">
+        <a-button v-if="canManage" @click="historyOpen = true"
+          ><template #icon><HistoryOutlined /></template>版本历史</a-button
+        >
         <a-button :disabled="!app || appLoading" @click="detailsOpen = true">
           <template #icon><InfoCircleOutlined /></template>
           应用详情
@@ -424,7 +567,7 @@ onBeforeUnmount(() => {
           v-if="isOwner"
           type="primary"
           :loading="deployLoading"
-          :disabled="!app || streaming || deleting || deployLoading"
+          :disabled="!app || isGenerating || deleting || deployLoading || actionLoading"
           @click="handleDeploy"
         >
           <template #icon><CloudUploadOutlined /></template>
@@ -433,6 +576,13 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <a-alert
+      v-if="app?.generationError && ['FAILED', 'STOPPED'].includes(app.generationStatus || '')"
+      :message="app.generationError"
+      :type="app.generationStatus === 'FAILED' ? 'error' : 'info'"
+      show-icon
+      class="app-chat-page__status"
+    />
     <div class="app-chat-page__body">
       <section class="chat-panel">
         <div ref="messagesRef" class="chat-panel__messages">
@@ -478,6 +628,8 @@ onBeforeUnmount(() => {
               <div class="chat-message__meta">
                 <span>{{ item.role === 'user' ? '我' : 'AI 助手' }}</span>
                 <span>{{ item.time }}</span>
+                <span v-if="item.status === 'stopped'">已停止 · 未保存</span>
+                <span v-if="item.status === 'error'">本次未保存</span>
               </div>
             </div>
           </div>
@@ -490,7 +642,7 @@ onBeforeUnmount(() => {
                 v-model:value="input"
                 :auto-size="{ minRows: 2, maxRows: 6 }"
                 :maxlength="2000"
-                :disabled="streaming || deployLoading || deleting || appLoading || !isOwner"
+                :disabled="isGenerating || deployLoading || deleting || appLoading || !isOwner"
                 :placeholder="readOnlyHint || '请描述你想生成的网站，越详细效果越好哦'"
                 @keydown="handleComposerKeydown"
               />
@@ -500,10 +652,14 @@ onBeforeUnmount(() => {
             <span class="chat-panel__composer-hint">{{
               readOnlyHint || 'Ctrl / ⌘ + Enter 发送'
             }}</span>
+            <a-button v-if="isGenerating && isOwner" danger :loading="stopping" @click="handleStop"
+              ><template #icon><StopOutlined /></template>停止生成</a-button
+            >
             <a-button
+              v-else
               type="primary"
               :disabled="
-                !input.trim() || streaming || deployLoading || deleting || appLoading || !isOwner
+                !input.trim() || isGenerating || deployLoading || deleting || appLoading || !isOwner
               "
               :loading="streaming"
               @click="handleSend"
@@ -552,12 +708,27 @@ onBeforeUnmount(() => {
       :app="app"
       :can-manage="canManage"
       :deleting="deleting"
-      :busy="streaming || deployLoading"
+      :busy="isGenerating || deployLoading || actionLoading"
+      :is-owner="isOwner"
       @edit="handleEditApp"
       @delete="handleDeleteApp"
+      @offline="handleWorkspaceAction('offline')"
+      @feature="handleWorkspaceAction('feature')"
     />
 
-    <DeploySuccessModal v-model:open="deployModalOpen" :url="deployUrl" />
+    <VersionHistoryDrawer
+      v-model:open="historyOpen"
+      :app-id="appId"
+      :current-version="app?.currentVersion"
+      :busy="isGenerating || deployLoading || actionLoading"
+      @restored="handleRestored"
+      @loaded="refreshApp"
+    />
+    <DeploySuccessModal
+      v-model:open="deployModalOpen"
+      :url="deployUrl"
+      :is-private="app?.visibility === 'PRIVATE'"
+    />
   </div>
 </template>
 
@@ -624,6 +795,10 @@ onBeforeUnmount(() => {
 .app-chat-page__app-name span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.app-chat-page__status {
+  flex: none;
 }
 
 .app-chat-page__body {

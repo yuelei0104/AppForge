@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AppInfo } from '@/api/workspace'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -14,6 +15,7 @@ import {
 import { useLoginUserStore } from '@/stores/loginUser'
 import UserInfo from '@/components/UserInfo.vue'
 import { formatDateTime } from '@/utils/date'
+import { isOnline } from '@/utils/appStatus'
 import { getAppDeployUrl, getAppPreviewUrl, isValidCoverUrl } from '@/utils/appUrls'
 
 const route = useRoute()
@@ -21,7 +23,7 @@ const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
 const appId = String(route.params.appId ?? '')
-const app = ref<API.AppVO | null>(null)
+const app = ref<AppInfo | null>(null)
 const loading = ref(true)
 const saving = ref(false)
 const deleting = ref(false)
@@ -30,6 +32,9 @@ const form = reactive({
   appName: '',
   cover: '',
   priority: 0,
+  description: '',
+  tags: [] as string[],
+  visibility: 'PRIVATE' as 'PRIVATE' | 'PUBLIC',
 })
 
 const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
@@ -42,10 +47,13 @@ const isOwner = computed(
 const canManage = computed(() => !!app.value && (isAdmin.value || isOwner.value))
 const backPath = computed(() => (isAdmin.value ? '/admin/appManage' : '/'))
 
-function initForm(data: API.AppVO) {
+function initForm(data: AppInfo) {
   form.appName = data.appName || ''
   form.cover = data.cover || ''
   form.priority = data.priority ?? 0
+  form.description = data.description || ''
+  form.tags = [...(data.tags || [])]
+  form.visibility = data.visibility || 'PRIVATE'
 }
 
 async function loadApp() {
@@ -109,17 +117,27 @@ async function handleSave() {
     message.warning('优先级必须为非负整数')
     return
   }
+  if (form.tags.length > 5 || form.tags.some((tag) => tag.trim().length > 20)) {
+    message.warning('最多 5 个标签，每个标签最多 20 字')
+    return
+  }
   saving.value = true
   try {
     const id = app.value.id ?? appId
+    const body = {
+      id,
+      appName,
+      cover,
+      description: form.description.trim(),
+      tags: form.tags,
+      visibility: form.visibility,
+    }
     const res = isAdmin.value
       ? await updateAppByAdmin({
-          id,
-          appName,
-          cover,
-          priority: form.priority,
+          ...body,
+          priority: form.visibility === 'PRIVATE' ? 0 : form.priority,
         })
-      : await updateApp({ id, appName, cover })
+      : await updateApp(body)
     if (res.data.code === 0) {
       message.success('保存成功')
       await router.push(
@@ -215,6 +233,33 @@ onMounted(() => {
               />
             </a-form-item>
 
+            <a-form-item label="应用描述" extra="用于公开展示及搜索，不会修改初始提示词">
+              <a-textarea
+                v-model:value="form.description"
+                :rows="3"
+                :maxlength="1000"
+                show-count
+                placeholder="介绍应用用途和亮点"
+              />
+            </a-form-item>
+            <a-form-item
+              label="可见范围"
+              extra="私有作品及其预览、部署链接仅本人或管理员可访问；改为私有会取消精选和置顶"
+            >
+              <a-radio-group v-model:value="form.visibility">
+                <a-radio-button value="PRIVATE">私有</a-radio-button>
+                <a-radio-button value="PUBLIC">公开</a-radio-button>
+              </a-radio-group>
+            </a-form-item>
+            <a-form-item label="应用标签" extra="最多 5 个，每个最多 20 字；输入后按回车添加">
+              <a-select
+                v-model:value="form.tags"
+                mode="tags"
+                :max-tag-count="5"
+                placeholder="例如：博客、工具、数据看板"
+              />
+            </a-form-item>
+
             <a-form-item label="应用封面" extra="支持 HTTP / HTTPS 图片链接，建议尺寸：400×300">
               <a-input
                 v-model:value="form.cover"
@@ -288,6 +333,12 @@ onMounted(() => {
             <a-descriptions-item label="更新时间">{{
               formatDateTime(app.updateTime)
             }}</a-descriptions-item>
+            <a-descriptions-item label="当前版本"
+              >v{{ app.currentVersion || 0 }}</a-descriptions-item
+            >
+            <a-descriptions-item label="部署状态">{{
+              isOnline(app) ? `在线 · v${app.deployedVersion || 0}` : '已下线'
+            }}</a-descriptions-item>
             <a-descriptions-item label="部署时间">{{
               formatDateTime(app.deployedTime)
             }}</a-descriptions-item>
@@ -297,7 +348,7 @@ onMounted(() => {
                   >查看预览</a
                 >
                 <a
-                  v-if="app.deployKey"
+                  v-if="isOnline(app) && app.deployKey"
                   :href="getAppDeployUrl(app.deployKey)"
                   target="_blank"
                   rel="noopener noreferrer"
