@@ -4,11 +4,8 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import type { TableColumnsType, TablePaginationConfig } from 'ant-design-vue'
 import { AppstoreOutlined, DeleteOutlined, EditOutlined, StarOutlined } from '@ant-design/icons-vue'
-import {
-  deleteAppByAdmin,
-  listAppVoByPageByAdmin,
-  updateAppByAdmin,
-} from '@/api/appController'
+import { deleteAppByAdmin, listAppVoByPageByAdmin, updateAppByAdmin } from '@/api/appController'
+import UserInfo from '@/components/UserInfo.vue'
 import { formatDateTime } from '@/utils/date'
 
 const router = useRouter()
@@ -256,12 +253,7 @@ onMounted(() => {
           {{ formatDateTime(record.createTime) }}
         </template>
         <template v-else-if="column.key === 'user'">
-          <span class="app-manage-page__user">
-            <a-avatar :src="record.user?.userAvatar || undefined" :size="24">
-              {{ (record.user?.userName || record.user?.userAccount || '用').slice(0, 1) }}
-            </a-avatar>
-            {{ record.user?.userName || record.user?.userAccount || '-' }}
-          </span>
+          <UserInfo :user="record.user" :size="24" />
         </template>
         <template v-else-if="column.key === 'action'">
           <a-space :size="4">
@@ -324,11 +316,5 @@ onMounted(() => {
   color: #667085;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.app-manage-page__user {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
 }
 </style>

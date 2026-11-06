@@ -12,6 +12,7 @@ import {
   updateAppByAdmin,
 } from '@/api/appController'
 import { useLoginUserStore } from '@/stores/loginUser'
+import UserInfo from '@/components/UserInfo.vue'
 import { formatDateTime } from '@/utils/date'
 import { getAppDeployUrl, getAppPreviewUrl, isValidCoverUrl } from '@/utils/appUrls'
 
@@ -278,12 +279,7 @@ onMounted(() => {
               ><span class="app-edit-page__id">{{ app.id }}</span></a-descriptions-item
             >
             <a-descriptions-item label="创建者">
-              <span class="app-edit-page__user">
-                <a-avatar :src="app.user?.userAvatar || undefined" :size="24">
-                  {{ (app.user?.userName || app.user?.userAccount || '用').slice(0, 1) }}
-                </a-avatar>
-                {{ app.user?.userName || app.user?.userAccount || '-' }}
-              </span>
+              <UserInfo :user="app.user" :size="24" />
             </a-descriptions-item>
 
             <a-descriptions-item label="创建时间">
@@ -437,16 +433,6 @@ onMounted(() => {
 .app-edit-page__id {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
-}
-
-.app-edit-page__user {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.app-edit-page__user :deep(.ant-avatar) {
-  flex-shrink: 0;
 }
 
 @media (max-width: 767px) {

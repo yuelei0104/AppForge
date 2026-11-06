@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 import GlobalFooter from '@/components/GlobalFooter.vue'
 import GlobalHeader from '@/components/GlobalHeader.vue'
 import { menuItems } from '@/config/menu'
+
+const route = useRoute()
 </script>
 
 <template>
@@ -10,7 +12,10 @@ import { menuItems } from '@/config/menu'
     <GlobalHeader :items="menuItems" />
 
     <a-layout-content class="basic-layout__content">
-      <div class="basic-layout__container">
+      <div
+        class="basic-layout__container"
+        :class="{ 'basic-layout__container--home': route.path === '/' }"
+      >
         <RouterView v-slot="{ Component, route }">
           <transition name="basic-layout-fade" mode="out-in">
             <component :is="Component" :key="route.path" />
@@ -43,6 +48,11 @@ import { menuItems } from '@/config/menu'
   padding: 24px;
 }
 
+.basic-layout__container--home {
+  max-width: none;
+  padding: 0;
+}
+
 .basic-layout-fade-enter-active,
 .basic-layout-fade-leave-active {
   transition: opacity 0.2s ease;
@@ -56,6 +66,10 @@ import { menuItems } from '@/config/menu'
 @media (max-width: 767px) {
   .basic-layout__container {
     padding: 16px;
+  }
+
+  .basic-layout__container--home {
+    padding: 0;
   }
 }
 </style>

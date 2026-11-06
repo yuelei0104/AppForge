@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Grid, message } from 'ant-design-vue'
 import { LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons-vue'
+import UserInfo from '@/components/UserInfo.vue'
 import logoUrl from '@/assets/logo.png'
 import ACCESS_ENUM from '@/access/accessEnum'
 import type { AccessType } from '@/access/accessEnum'
@@ -31,14 +32,6 @@ const drawerOpen = ref(false)
 
 /** md 断点以下（< 768px）使用抽屉菜单，首次渲染按桌面端处理，避免闪烁 */
 const isMobile = computed(() => screens.value.md === false)
-
-/** 优先展示昵称，没有昵称时退回账号 */
-const displayName = computed(
-  () => loginUserStore.loginUser.userName || loginUserStore.loginUser.userAccount || '未登录',
-)
-
-/** 头像加载失败或未设置头像时展示的名字首字 */
-const avatarText = computed(() => displayName.value.slice(0, 1))
 
 /** 根据当前用户权限过滤菜单项 */
 const visibleItems = computed(() =>
@@ -135,14 +128,7 @@ watch(
 
         <a-dropdown v-if="loginUserStore.isLoggedIn" placement="bottomRight">
           <div class="global-header__user" role="button" tabindex="0">
-            <a-avatar
-              :src="loginUserStore.loginUser.userAvatar || undefined"
-              :size="32"
-              class="global-header__avatar"
-            >
-              {{ avatarText }}
-            </a-avatar>
-            <span class="global-header__nickname">{{ displayName }}</span>
+            <UserInfo :user="loginUserStore.loginUser" :size="32" class="global-header__identity" />
           </div>
           <template #overlay>
             <a-menu @click="handleUserMenuClick">
@@ -267,8 +253,8 @@ watch(
   background: rgba(0, 0, 0, 0.04);
 }
 
-.global-header__nickname {
-  max-width: 120px;
+.global-header__identity {
+  max-width: 160px;
   overflow: hidden;
   font-size: 14px;
   color: rgba(0, 0, 0, 0.88);
@@ -294,8 +280,8 @@ watch(
     font-size: 15px;
   }
 
-  .global-header__nickname {
-    max-width: 72px;
+  .global-header__identity {
+    max-width: 116px;
   }
 }
 

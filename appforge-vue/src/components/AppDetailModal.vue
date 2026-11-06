@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons-vue'
+import UserInfo from '@/components/UserInfo.vue'
 import { formatDateTime } from '@/utils/date'
 
-const props = defineProps<{
+defineProps<{
   open: boolean
   app: API.AppVO | null
   canManage: boolean
@@ -16,8 +16,6 @@ const emit = defineEmits<{
   edit: []
   delete: []
 }>()
-
-const creatorName = computed(() => props.app?.user?.userName || '未命名用户')
 </script>
 
 <template>
@@ -31,12 +29,7 @@ const creatorName = computed(() => props.app?.user?.userName || '未命名用户
     <a-descriptions v-if="app" :column="1" class="app-detail-modal__info">
       <a-descriptions-item label="应用名称">{{ app.appName || '未命名应用' }}</a-descriptions-item>
       <a-descriptions-item label="创建者">
-        <a-space>
-          <a-avatar :src="app.user?.userAvatar || undefined" :size="28">
-            {{ creatorName.slice(0, 1) }}
-          </a-avatar>
-          <span>{{ creatorName }}</span>
-        </a-space>
+        <UserInfo :user="app.user" />
       </a-descriptions-item>
       <a-descriptions-item label="创建时间">
         {{ formatDateTime(app.createTime) }}
