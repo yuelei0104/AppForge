@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { message } from 'ant-design-vue'
 
-// 后端接口基础地址
-export const API_BASE_URL = 'http://localhost:8123/api'
+import { API_BASE_URL } from '@/config/env'
+
+export { API_BASE_URL } from '@/config/env'
 
 // 创建 Axios 实例
 const myAxios = axios.create({

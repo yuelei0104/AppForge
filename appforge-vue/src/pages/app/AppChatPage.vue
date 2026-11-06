@@ -5,7 +5,6 @@ import { message } from 'ant-design-vue'
 import {
   ArrowLeftOutlined,
   CloudUploadOutlined,
-  CopyOutlined,
   DownOutlined,
   EditOutlined,
   HomeOutlined,
@@ -14,7 +13,9 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import logoUrl from '@/assets/logo.png'
+import aiAvatarUrl from '@/assets/aiAvatar.svg'
+import MarkdownContent from '@/components/MarkdownContent.vue'
+import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import {
   deleteApp,
   deleteAppByAdmin,
@@ -23,9 +24,9 @@ import {
   getAppVoByIdByAdmin,
 } from '@/api/appController'
 import AppDetailModal from '@/components/AppDetailModal.vue'
-import { API_BASE_URL } from '@/request'
+import { API_BASE_URL } from '@/config/env'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { getAppPreviewUrl } from '@/utils/appUrls'
+import { getAppDeployUrlFromResponse, getAppPreviewUrl } from '@/utils/appUrls'
 
 interface ChatMessage {
   id: string
@@ -285,7 +286,7 @@ async function handleDeploy() {
       return
     }
     if (res.data.code === 0 && res.data.data) {
-      deployUrl.value = res.data.data
+      deployUrl.value = getAppDeployUrlFromResponse(res.data.data)
       deployModalOpen.value = true
       message.success('部署成功')
       // 刷新部署标识和时间，不重新加载对话或触发代码生成。
@@ -314,15 +315,6 @@ async function handleDeploy() {
     if (sequence === loadSequence) {
       deployLoading.value = false
     }
-  }
-}
-
-async function copyDeployUrl() {
-  try {
-    await navigator.clipboard.writeText(deployUrl.value)
-    message.success('部署地址已复制')
-  } catch {
-    message.warning('复制失败，请手动复制')
   }
 }
 
@@ -446,7 +438,7 @@ onBeforeUnmount(() => {
         <div ref="messagesRef" class="chat-panel__messages">
           <a-spin v-if="appLoading" class="chat-panel__loading" />
           <div v-else-if="!messages.length" class="chat-panel__empty">
-            <div class="chat-panel__empty-icon">AI</div>
+            <img :src="aiAvatarUrl" class="chat-panel__empty-avatar" alt="AI 助手" />
             <p v-if="isViewMode">正在浏览应用，暂未保存历史对话。</p>
             <p v-else>描述你的想法，AI 会帮你生成一个完整的网站应用。</p>
           </div>
@@ -467,13 +459,20 @@ onBeforeUnmount(() => {
                 <UserOutlined />
               </template>
             </a-avatar>
-            <a-avatar v-else :src="logoUrl" :size="32" class="chat-message__avatar" />
+            <a-avatar
+              v-else
+              alt="AI 助手"
+              :src="aiAvatarUrl"
+              :size="32"
+              class="chat-message__avatar"
+            />
 
             <div class="chat-message__body">
               <div class="chat-message__bubble">
                 <div class="chat-message__content">
-                  {{ item.content
-                  }}<span v-if="item.status === 'streaming'" class="chat-message__cursor" />
+                  <MarkdownContent v-if="item.role === 'ai'" :content="item.content" />
+                  <template v-else>{{ item.content }}</template>
+                  <span v-if="item.status === 'streaming'" class="chat-message__cursor" />
                 </div>
               </div>
               <div class="chat-message__meta">
@@ -492,9 +491,7 @@ onBeforeUnmount(() => {
                 :auto-size="{ minRows: 2, maxRows: 6 }"
                 :maxlength="2000"
                 :disabled="streaming || deployLoading || deleting || appLoading || !isOwner"
-                :placeholder="
-                  readOnlyHint || '描述你想创建或修改的内容，例如：把页面配色改成暗黑风格'
-                "
+                :placeholder="readOnlyHint || '请描述你想生成的网站，越详细效果越好哦'"
                 @keydown="handleComposerKeydown"
               />
             </div>
@@ -560,32 +557,7 @@ onBeforeUnmount(() => {
       @delete="handleDeleteApp"
     />
 
-    <a-modal v-model:open="deployModalOpen" title="部署成功" :footer="null" :width="640">
-      <a-result
-        status="success"
-        title="网站部署成功！"
-        sub-title="你的网站已经成功部署，可以通过以下链接访问："
-        class="deploy-modal__result"
-      >
-        <template #extra>
-          <a-input :value="deployUrl" readonly aria-label="部署地址">
-            <template #suffix>
-              <a-tooltip title="复制部署地址">
-                <a-button type="text" size="small" aria-label="复制部署地址" @click="copyDeployUrl">
-                  <template #icon><CopyOutlined /></template>
-                </a-button>
-              </a-tooltip>
-            </template>
-          </a-input>
-          <a-space class="deploy-modal__actions" wrap>
-            <a-button type="primary" :href="deployUrl" target="_blank" rel="noopener noreferrer">
-              访问网站
-            </a-button>
-            <a-button @click="deployModalOpen = false">关闭</a-button>
-          </a-space>
-        </template>
-      </a-result>
-    </a-modal>
+    <DeploySuccessModal v-model:open="deployModalOpen" :url="deployUrl" />
   </div>
 </template>
 
@@ -593,7 +565,7 @@ onBeforeUnmount(() => {
 .app-chat-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   min-height: 560px;
   height: calc(100vh - 64px - 63px - 48px);
 }
@@ -657,7 +629,7 @@ onBeforeUnmount(() => {
 .app-chat-page__body {
   display: flex;
   flex: 1;
-  gap: 16px;
+  gap: 12px;
   min-height: 0;
 }
 
@@ -669,17 +641,18 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: #fff;
   border: 1px solid #edf0f5;
-  border-radius: 16px;
+  border-radius: 12px;
 }
 
 .chat-panel {
-  flex: 0 0 420px;
+  flex: 2;
+  min-width: 0;
 }
 
 .chat-panel__messages {
   flex: 1;
   min-height: 0;
-  padding: 20px 18px;
+  padding: 16px;
   overflow-y: auto;
   background: #fbfcfe;
 }
@@ -704,7 +677,6 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.chat-panel__empty-icon,
 .preview-panel__empty-icon {
   display: grid;
   width: 54px;
@@ -715,6 +687,11 @@ onBeforeUnmount(() => {
   color: #fff;
   background: linear-gradient(135deg, #4f7cff, #53c8d8);
   border-radius: 16px;
+}
+
+.chat-panel__empty-avatar {
+  width: 64px;
+  height: 64px;
 }
 
 .chat-message {
@@ -733,6 +710,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-message__body {
+  min-width: 0;
   max-width: calc(100% - 44px);
 }
 
@@ -746,8 +724,8 @@ onBeforeUnmount(() => {
   padding: 11px 14px;
   font-size: 13px;
   line-height: 1.7;
-  background: #fff;
-  border: 1px solid #e8edf5;
+  background: #f7f8fb;
+  border: 1px solid #edf0f5;
   border-radius: 4px 14px 14px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
 }
@@ -818,7 +796,8 @@ onBeforeUnmount(() => {
 }
 
 .preview-panel {
-  flex: 1;
+  flex: 3;
+  min-width: 0;
 }
 
 .preview-panel__header {
@@ -865,25 +844,6 @@ onBeforeUnmount(() => {
   color: #4f7cff;
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(2px);
-}
-
-.deploy-modal__result {
-  padding: 28px 16px 16px;
-}
-
-.deploy-modal__result :deep(.ant-result-icon > .anticon) {
-  font-size: 52px;
-}
-
-.deploy-modal__result :deep(.ant-result-title) {
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.deploy-modal__actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 24px;
 }
 
 @media (max-width: 991px) {

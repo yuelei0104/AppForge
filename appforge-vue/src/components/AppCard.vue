@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { AppstoreOutlined, EditOutlined } from '@ant-design/icons-vue'
-import { formatRelativeTime } from '@/utils/date'
+import UserInfo from '@/components/UserInfo.vue'
 import { getAppDeployUrl } from '@/utils/appUrls'
 
 const props = withDefaults(
@@ -9,12 +9,9 @@ const props = withDefaults(
     app: API.AppVO
     /** 是否显示编辑按钮 */
     editable?: boolean
-    /** 是否显示创建者信息 */
-    showAuthor?: boolean
   }>(),
   {
     editable: false,
-    showAuthor: false,
   },
 )
 
@@ -24,12 +21,15 @@ const emit = defineEmits<{
 }>()
 
 const coverFailed = ref(false)
+watch(
+  () => props.app.cover,
+  () => {
+    coverFailed.value = false
+  },
+)
 
 const appName = computed(() => props.app.appName || '未命名应用')
 const initial = computed(() => appName.value.slice(0, 1).toUpperCase())
-const authorName = computed(
-  () => props.app.user?.userName || props.app.user?.userAccount || '匿名用户',
-)
 const isFeatured = computed(() => props.app.priority === 99)
 
 function handleOpen() {
@@ -87,16 +87,7 @@ function handleEdit(event: MouseEvent) {
     </div>
 
     <div class="app-card__body">
-      <h3 class="app-card__title" :title="appName">{{ appName }}</h3>
-      <div class="app-card__meta">
-        <span>创建于 {{ formatRelativeTime(app.createTime) }}</span>
-        <span v-if="showAuthor" class="app-card__author">
-          <a-avatar :src="app.user?.userAvatar || undefined" :size="20">
-            {{ authorName.slice(0, 1) }}
-          </a-avatar>
-          {{ authorName }}
-        </span>
-      </div>
+      <UserInfo :user="app.user" :title="appName" :size="40" class="app-card__creator" />
     </div>
   </article>
 </template>
@@ -123,7 +114,7 @@ function handleEdit(event: MouseEvent) {
 
 .app-card__cover {
   position: relative;
-  height: 168px;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   background: #f3f6fb;
 }
@@ -218,43 +209,19 @@ function handleEdit(event: MouseEvent) {
 }
 
 .app-card__body {
-  padding: 14px 16px 16px;
+  padding: 16px 18px;
 }
 
-.app-card__title {
-  margin: 0;
-  overflow: hidden;
-  font-size: 15px;
+.app-card__creator {
+  width: 100%;
+}
+
+.app-card__creator :deep(.user-info__title) {
+  font-size: 16px;
   font-weight: 600;
-  line-height: 22px;
-  color: rgba(0, 0, 0, 0.88);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-card__meta {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #98a2b3;
-}
-
-.app-card__author {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-  color: #667085;
 }
 
 @media (max-width: 767px) {
-  .app-card__cover {
-    height: 150px;
-  }
-
   .app-card__edit {
     opacity: 1;
   }

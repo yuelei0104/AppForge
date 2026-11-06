@@ -10,7 +10,28 @@ import { useLoginUserStore } from '@/stores/loginUser'
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
-const quickPrompts = ['波普风电商页面', '企业网站', '电商运营后台', '暗黑话题社区']
+const quickPrompts = [
+  {
+    label: '个人博客',
+    prompt:
+      '帮我创建个人博客网站，采用简洁的浅色设计，首页展示个人简介、头像和最新文章。提供文章分类、标签筛选和关键词搜索，文章详情支持目录与代码展示。底部放置邮箱及社交链接，适配手机和电脑，并填充几篇示例文章。',
+  },
+  {
+    label: '企业官网',
+    prompt:
+      '帮我创建一家科技公司的官方网站，使用蓝紫色科技风格。包含品牌介绍、产品服务、客户案例、团队成员和联系表单。首页突出核心产品及咨询入口，导航点击后滚动到对应区块，配上真实感的示例文案，并适配移动端。',
+  },
+  {
+    label: '活动报名',
+    prompt:
+      '帮我创建一场周末城市摄影活动的报名网站，使用温暖清新的配色。展示活动时间地点、行程安排、嘉宾介绍、费用和常见问题。报名表包含姓名、联系方式与人数，提交前校验必填项并显示报名成功提示，手机端也能方便填写。',
+  },
+  {
+    label: '数据看板',
+    prompt:
+      '帮我创建一个电商运营数据看板，包含销售额、订单量、客单价与转化率指标，展示近七天趋势、商品排行和订单列表。支持日期筛选、订单状态筛选及关键词搜索，使用清晰的卡片布局和示例数据，适配桌面和手机浏览。',
+  },
+]
 
 const prompt = ref('')
 const creating = ref(false)
@@ -40,6 +61,7 @@ function goLogin() {
 }
 
 async function handleCreate() {
+  if (creating.value) return
   const initPrompt = prompt.value.trim()
   if (!initPrompt) {
     message.warning('请先描述你想创建的应用')
@@ -105,6 +127,8 @@ async function fetchGoodApps() {
       pageNum: goodPage.value,
       pageSize: goodPageSize,
       appName: goodSearch.value.trim() || undefined,
+      sortField: 'createTime',
+      sortOrder: 'desc',
     })
     if (res.data.code === 0 && res.data.data) {
       goodApps.value = res.data.data.records ?? []
@@ -161,9 +185,9 @@ onMounted(() => {
   <div class="home-view">
     <section class="hero">
       <div class="hero__content">
-        <div class="hero__eyebrow">NOCODE AI</div>
-        <h1 class="hero__title">一句话，<span>生成所想</span></h1>
-        <p class="hero__subtitle">与 AI 对话，轻松创建应用和网站</p>
+        <div class="hero__eyebrow">APPFORGE · CREATE WITH AI</div>
+        <h1 class="hero__title">AI 应用生成平台</h1>
+        <p class="hero__subtitle">一句话轻松创建网站应用</p>
 
         <div class="prompt-panel">
           <a-textarea
@@ -171,7 +195,7 @@ onMounted(() => {
             class="prompt-panel__input"
             :auto-size="{ minRows: 4, maxRows: 8 }"
             :maxlength="2000"
-            placeholder="使用 NoCode 创建一个高效的小工具，帮我计算……"
+            placeholder="帮我创建个人博客网站"
             @keydown="handlePromptKeydown"
           />
           <div class="prompt-panel__footer">
@@ -195,12 +219,12 @@ onMounted(() => {
           <span class="quick-prompts__label">试试：</span>
           <button
             v-for="item in quickPrompts"
-            :key="item"
+            :key="item.label"
             type="button"
             class="quick-prompts__item"
-            @click="useQuickPrompt(item)"
+            @click="useQuickPrompt(item.prompt)"
           >
-            {{ item }}
+            {{ item.label }}
           </button>
         </div>
       </div>
@@ -277,13 +301,7 @@ onMounted(() => {
 
       <a-spin :spinning="goodLoading">
         <div v-if="goodApps.length" class="app-grid">
-          <AppCard
-            v-for="app in goodApps"
-            :key="String(app.id)"
-            :app="app"
-            show-author
-            @open="openGoodApp"
-          />
+          <AppCard v-for="app in goodApps" :key="String(app.id)" :app="app" @open="openGoodApp" />
         </div>
         <a-empty v-else class="empty-state" description="暂时还没有精选应用" />
       </a-spin>
@@ -303,36 +321,22 @@ onMounted(() => {
 
 <style scoped>
 .home-view {
-  margin: -24px;
-  background: #f5f7fa;
+  min-height: calc(100vh - 64px);
+  padding-bottom: 32px;
+  background:
+    radial-gradient(ellipse at 10% 0%, rgba(170, 192, 255, 0.36), transparent 42%),
+    radial-gradient(ellipse at 92% 18%, rgba(176, 160, 248, 0.28), transparent 42%),
+    linear-gradient(155deg, #f0f5ff 0%, #f5f3ff 42%, #f8fbff 100%);
 }
 
 .hero {
-  position: relative;
-  overflow: hidden;
-  padding: 72px 24px 86px;
-  background:
-    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.9), transparent 34%),
-    radial-gradient(circle at 82% 20%, rgba(134, 239, 226, 0.7), transparent 32%),
-    linear-gradient(120deg, #f7fbf7 0%, #d9f6ef 42%, #a9e6ec 100%);
-}
-
-.hero::after {
-  position: absolute;
-  right: -120px;
-  bottom: -180px;
-  width: 480px;
-  height: 480px;
-  content: '';
-  background: rgba(255, 255, 255, 0.28);
-  border-radius: 50%;
-  filter: blur(8px);
+  padding: 68px 24px 36px;
 }
 
 .hero__content {
   position: relative;
   z-index: 1;
-  max-width: 900px;
+  max-width: 820px;
   margin: 0 auto;
   text-align: center;
 }
@@ -341,7 +345,7 @@ onMounted(() => {
   margin-bottom: 14px;
   font-size: 12px;
   font-weight: 700;
-  color: #0f766e;
+  color: #7571ab;
   letter-spacing: 3px;
 }
 
@@ -350,27 +354,25 @@ onMounted(() => {
   font-size: 46px;
   font-weight: 800;
   line-height: 1.2;
-  color: #102a2a;
-  letter-spacing: 2px;
-}
-
-.hero__title span {
-  color: #0d9488;
+  color: #242943;
+  letter-spacing: 1px;
 }
 
 .hero__subtitle {
   margin: 16px 0 30px;
   font-size: 17px;
-  color: #52706f;
+  color: #727790;
 }
 
 .prompt-panel {
   padding: 16px 18px 12px;
   text-align: left;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: none;
   border-radius: 20px;
-  box-shadow: 0 18px 48px rgba(15, 118, 110, 0.12);
+  box-shadow:
+    0 16px 48px rgba(85, 78, 163, 0.1),
+    0 0 0 1px rgba(145, 135, 200, 0.08);
   backdrop-filter: blur(12px);
 }
 
@@ -412,13 +414,13 @@ onMounted(() => {
 
 .quick-prompts__label {
   font-size: 13px;
-  color: #5f7776;
+  color: #85849d;
 }
 
 .quick-prompts__item {
   padding: 7px 14px;
   font-size: 13px;
-  color: #405b5a;
+  color: #5c5a78;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.9);
@@ -435,7 +437,7 @@ onMounted(() => {
 
 .section {
   max-width: 1240px;
-  padding: 46px 24px 10px;
+  padding: 36px 24px 10px;
   margin: 0 auto;
 }
 
@@ -492,8 +494,8 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 26px 28px;
-  background: linear-gradient(120deg, #fff 0%, #f0fbfa 100%);
-  border: 1px solid #d9f0ee;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid #e6e4f5;
   border-radius: 16px;
 }
 
@@ -501,7 +503,7 @@ onMounted(() => {
   margin: 0;
   font-size: 17px;
   font-weight: 600;
-  color: #102a2a;
+  color: #242943;
 }
 
 .login-tip__desc {
@@ -512,7 +514,7 @@ onMounted(() => {
 
 @media (max-width: 991px) {
   .hero {
-    padding: 56px 20px 70px;
+    padding: 56px 20px 30px;
   }
 
   .hero__title {
@@ -525,12 +527,8 @@ onMounted(() => {
 }
 
 @media (max-width: 767px) {
-  .home-view {
-    margin: -16px;
-  }
-
   .hero {
-    padding: 44px 16px 58px;
+    padding: 44px 16px 24px;
   }
 
   .hero__title {
