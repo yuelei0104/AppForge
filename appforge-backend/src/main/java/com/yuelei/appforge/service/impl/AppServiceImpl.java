@@ -30,6 +30,7 @@ import reactor.core.publisher.Flux;
 import jakarta.annotation.Resource;
 
 import java.io.File;
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -123,10 +124,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App app = getAppById(appUpdateRequest.getId());
         checkOwnership(app, loginUser);
 
-        // 用户只能修改应用名称
+        // 普通用户仅能更新白名单字段，不能修改优先级或应用归属。
         App updateApp = new App();
         updateApp.setId(app.getId());
         updateApp.setAppName(appName);
+        if (appUpdateRequest.getCover() != null) {
+            updateApp.setCover(validateCover(appUpdateRequest.getCover()));
+        }
+        updateApp.setEditTime(LocalDateTime.now());
         boolean result = this.updateById(updateApp);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "更新应用失败");
         return true;
@@ -225,13 +230,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             hasUpdate = true;
         }
         if (appAdminUpdateRequest.getCover() != null) {
-            String cover = StrUtil.trim(appAdminUpdateRequest.getCover());
-            ThrowUtils.throwIf(
-                cover.length() > AppConstant.COVER_MAX_LENGTH,
-                ErrorCode.PARAMS_ERROR,
-                "应用封面地址不能超过 " + AppConstant.COVER_MAX_LENGTH + " 个字符"
-            );
-            updateApp.setCover(cover);
+            updateApp.setCover(validateCover(appAdminUpdateRequest.getCover()));
             hasUpdate = true;
         }
         if (appAdminUpdateRequest.getPriority() != null) {
@@ -249,6 +248,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             return true;
         }
 
+        updateApp.setEditTime(LocalDateTime.now());
         boolean result = this.updateById(updateApp);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "更新应用失败");
         return true;
@@ -376,6 +376,26 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             ErrorCode.PARAMS_ERROR,
             "应用名称不能超过 " + AppConstant.APP_NAME_MAX_LENGTH + " 个字符"
         );
+    }
+
+    /** 校验图片链接；空字符串用于清除封面。 */
+    private String validateCover(String value) {
+        String cover = StrUtil.trimToEmpty(value);
+        ThrowUtils.throwIf(cover.length() > AppConstant.COVER_MAX_LENGTH,
+            ErrorCode.PARAMS_ERROR, "应用封面地址不能超过 " + AppConstant.COVER_MAX_LENGTH + " 个字符");
+        if (cover.isEmpty()) {
+            return cover;
+        }
+        try {
+            URI uri = URI.create(cover);
+            if (("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                && StrUtil.isNotBlank(uri.getHost())) {
+                return cover;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // 统一转换为可展示的参数错误。
+        }
+        throw new BusinessException(ErrorCode.PARAMS_ERROR, "封面地址必须是有效的 HTTP 或 HTTPS 链接");
     }
 
     /**

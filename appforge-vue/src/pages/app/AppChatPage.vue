@@ -9,12 +9,20 @@ import {
   DownOutlined,
   EditOutlined,
   HomeOutlined,
+  InfoCircleOutlined,
   LinkOutlined,
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
 import logoUrl from '@/assets/logo.png'
-import { deployApp, getAppVoById } from '@/api/appController'
+import {
+  deleteApp,
+  deleteAppByAdmin,
+  deployApp,
+  getAppVoById,
+  getAppVoByIdByAdmin,
+} from '@/api/appController'
+import AppDetailModal from '@/components/AppDetailModal.vue'
 import { API_BASE_URL } from '@/request'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { getAppPreviewUrl } from '@/utils/appUrls'
@@ -48,12 +56,15 @@ const previewKey = ref(0)
 const deployLoading = ref(false)
 const deployModalOpen = ref(false)
 const deployUrl = ref('')
+const detailsOpen = ref(false)
+const deleting = ref(false)
 
 let eventSource: EventSource | null = null
 let messageSeed = 0
 let loadSequence = 0
 
 const appName = computed(() => app.value?.appName || '未命名应用')
+const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
 const isOwner = computed(
   () =>
     app.value?.userId != null &&
@@ -63,6 +74,7 @@ const isOwner = computed(
 const readOnlyHint = computed(() =>
   app.value && !isOwner.value ? '无法在别人的作品下对话哦～' : undefined,
 )
+const canManage = computed(() => !!app.value && (isOwner.value || isAdmin.value))
 
 function nextMessageId() {
   messageSeed += 1
@@ -206,6 +218,7 @@ async function loadApp() {
   previewLoading.value = false
   previewVisible.value = false
   previewUrl.value = ''
+  detailsOpen.value = false
   app.value = null
   messages.value = []
   input.value = ''
@@ -216,7 +229,9 @@ async function loadApp() {
   }
   appLoading.value = true
   try {
-    const res = await getAppVoById({ id: appId.value })
+    const res = isAdmin.value
+      ? await getAppVoByIdByAdmin({ id: appId.value })
+      : await getAppVoById({ id: appId.value })
     if (sequence !== loadSequence) {
       return
     }
@@ -288,11 +303,43 @@ function openPreview() {
 
 function handleAppMenuClick({ key }: { key: string | number }) {
   if (key === 'edit') {
-    if (isOwner.value) {
-      void router.push(`/app/edit/${appId.value}`)
-    }
+    handleEditApp()
   } else if (key === 'home') {
     void router.push('/')
+  }
+}
+
+function handleEditApp() {
+  if (!canManage.value || streaming.value || deleting.value) {
+    return
+  }
+  detailsOpen.value = false
+  void router.push(`/app/edit/${appId.value}`)
+}
+
+async function handleDeleteApp() {
+  if (!app.value || !canManage.value || streaming.value || deleting.value) {
+    return
+  }
+  const id = appId.value
+  deleting.value = true
+  try {
+    const res = isAdmin.value ? await deleteAppByAdmin({ id }) : await deleteApp({ id })
+    if (appId.value !== id) {
+      return
+    }
+    if (res.data.code === 0 && res.data.data) {
+      detailsOpen.value = false
+      closeStream()
+      message.success('删除成功')
+      await router.replace('/')
+    } else {
+      message.error(res.data.message || '删除失败')
+    }
+  } catch {
+    message.error('删除失败，请稍后重试')
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -326,7 +373,7 @@ onBeforeUnmount(() => {
           </button>
           <template #overlay>
             <a-menu @click="handleAppMenuClick">
-              <a-menu-item v-if="isOwner" key="edit">
+              <a-menu-item v-if="canManage" key="edit" :disabled="streaming || deleting">
                 <EditOutlined />
                 编辑应用信息
               </a-menu-item>
@@ -341,18 +388,22 @@ onBeforeUnmount(() => {
         <a-tag v-if="streaming" color="processing">AI 生成中</a-tag>
       </div>
 
-      <a-button
-        v-if="isOwner"
-        type="primary"
-        :loading="deployLoading"
-        :disabled="!app || streaming"
-        @click="handleDeploy"
-      >
-        <template #icon>
-          <CloudUploadOutlined />
-        </template>
-        部署
-      </a-button>
+      <div class="app-chat-page__topbar-actions">
+        <a-button :disabled="!app || appLoading" @click="detailsOpen = true">
+          <template #icon><InfoCircleOutlined /></template>
+          应用详情
+        </a-button>
+        <a-button
+          v-if="isOwner"
+          type="primary"
+          :loading="deployLoading"
+          :disabled="!app || streaming || deleting"
+          @click="handleDeploy"
+        >
+          <template #icon><CloudUploadOutlined /></template>
+          部署
+        </a-button>
+      </div>
     </div>
 
     <div class="app-chat-page__body">
@@ -462,6 +513,16 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
+    <AppDetailModal
+      v-model:open="detailsOpen"
+      :app="app"
+      :can-manage="canManage"
+      :deleting="deleting"
+      :busy="streaming"
+      @edit="handleEditApp"
+      @delete="handleDeleteApp"
+    />
+
     <a-modal v-model:open="deployModalOpen" title="部署成功" :footer="null" width="520px">
       <p class="deploy-modal__desc">你的应用已部署成功，可以通过以下地址访问：</p>
       <a-space direction="vertical" style="width: 100%">
@@ -491,6 +552,7 @@ onBeforeUnmount(() => {
 
 .app-chat-page__topbar {
   display: flex;
+  flex-wrap: wrap;
   flex: none;
   gap: 16px;
   align-items: center;
@@ -500,6 +562,14 @@ onBeforeUnmount(() => {
   background: #fff;
   border: 1px solid #edf0f5;
   border-radius: 14px;
+}
+
+.app-chat-page__topbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
 }
 
 .app-chat-page__topbar-left {
