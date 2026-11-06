@@ -42,6 +42,17 @@ create table if not exists app
   codeGenType  varchar(64)                        null comment '代码生成类型（枚举）',
   deployKey    varchar(64)                        null comment '部署标识',
   deployedTime datetime                           null comment '部署时间',
+  description varchar(1000) NOT NULL DEFAULT '',
+  tags varchar(256) NOT NULL DEFAULT '',
+  visibility varchar(16) NOT NULL DEFAULT 'PRIVATE',
+  generationStatus varchar(16) NOT NULL DEFAULT 'IDLE',
+  generationError varchar(512) NOT NULL DEFAULT '',
+  generationToken varchar(36) NOT NULL DEFAULT '',
+  currentVersion int NOT NULL DEFAULT 0,
+  deployedVersion int NOT NULL DEFAULT 0,
+  deploymentStatus varchar(16) NOT NULL DEFAULT 'OFFLINE',
+  featureStatus varchar(16) NOT NULL DEFAULT 'NONE',
+  featureReason varchar(256) NOT NULL DEFAULT '',
   priority     int      default 0                 not null comment '优先级',
   userId       bigint                             not null comment '创建用户id',
   editTime     datetime default CURRENT_TIMESTAMP not null comment '编辑时间',
@@ -50,5 +61,26 @@ create table if not exists app
   isDelete     tinyint  default 0                 not null comment '是否删除',
   UNIQUE KEY uk_deployKey (deployKey), -- 确保部署标识唯一
   INDEX idx_appName (appName),         -- 提升基于应用名称的查询性能
-  INDEX idx_userId (userId)            -- 提升基于用户 ID 的查询性能
+  INDEX idx_userId (userId),
+  INDEX idx_app_discovery (visibility, isDelete, priority, createTime),
+  INDEX idx_app_feature_review (featureStatus, isDelete)
 ) comment '应用' collate = utf8mb4_unicode_ci;
+
+
+CREATE TABLE app_version (
+  id bigint AUTO_INCREMENT PRIMARY KEY,
+  appId bigint NOT NULL,
+  versionNo int NOT NULL,
+  kind varchar(16) NOT NULL,
+  sourceVersion int NULL,
+  summary varchar(256) NOT NULL DEFAULT '',
+  codeFiles longtext NOT NULL,
+  createTime datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_app_version(appId,versionNo)
+) COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE app_file_cleanup (
+  appId bigint PRIMARY KEY,
+  codeGenType varchar(64) NOT NULL,
+  deployKey varchar(64) NULL,
+  createTime datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+) COLLATE=utf8mb4_unicode_ci;

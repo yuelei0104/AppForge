@@ -1,340 +1,201 @@
 package com.yuelei.appforge.controller;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+
 import com.mybatisflex.core.paginate.Page;
-import com.mybatisflex.core.query.QueryWrapper;
 import com.yuelei.appforge.annotation.AuthCheck;
-import com.yuelei.appforge.common.BaseResponse;
-import com.yuelei.appforge.common.DeleteRequest;
-import com.yuelei.appforge.common.ResultUtils;
-import com.yuelei.appforge.constant.AppConstant;
+import com.yuelei.appforge.common.*;
 import com.yuelei.appforge.constant.UserConstant;
-import com.yuelei.appforge.exception.BusinessException;
-import com.yuelei.appforge.exception.ErrorCode;
-import com.yuelei.appforge.exception.ThrowUtils;
+import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.dto.app.*;
-import com.yuelei.appforge.model.entity.App;
-import com.yuelei.appforge.model.entity.User;
-import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.model.vo.AppVO;
-import com.yuelei.appforge.service.AppService;
-import com.yuelei.appforge.service.UserService;
+import com.yuelei.appforge.service.*;
+import com.yuelei.appforge.workspace.*;
+
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+
 import org.springframework.http.MediaType;
-import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
-import java.util.List;
+import reactor.core.Disposable;
+import reactor.core.publisher.*;
+
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * 应用控制层。
- *
- * @author yuelei
- */
 @RestController
 @RequestMapping("/app")
 public class AppController {
+    @Resource private AppService appService;
+    @Resource private UserService userService;
 
-    @Resource
-    private AppService appService;
-
-    @Resource
-    private UserService userService;
-
-    /**
-     * 创建应用
-     *
-     * @param appAddRequest 创建应用请求
-     * @param request       请求
-     * @return 应用 id
-     */
     @PostMapping("/add")
-    public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
-        ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
-        // 参数校验
-        String initPrompt = appAddRequest.getInitPrompt();
-        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
-        // 获取当前登录用户
-        User loginUser = userService.getLoginUser(request);
-        // 构造入库对象
-        App app = new App();
-        BeanUtil.copyProperties(appAddRequest, app);
-        app.setUserId(loginUser.getId());
-        // 应用名称暂时为 initPrompt 前 12 位
-        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        // 暂时设置为多文件生成
-        app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
-        // 插入数据库
-        boolean result = appService.save(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        return ResultUtils.success(app.getId());
+    public BaseResponse<Long> addApp(@RequestBody AppAddRequest body, HttpServletRequest request) {
+        return ResultUtils.success(appService.addApp(body, userService.getLoginUser(request)));
     }
 
-
-    /**
-     * 更新应用（用户只能更新自己的应用名称与封面）
-     *
-     * @param appUpdateRequest 更新请求
-     * @param request          请求
-     * @return 更新结果
-     */
     @PostMapping("/update")
-    public BaseResponse<Boolean> updateApp(@RequestBody AppUpdateRequest appUpdateRequest, HttpServletRequest request) {
-        User loginUser = userService.getLoginUser(request);
-        return ResultUtils.success(appService.updateApp(appUpdateRequest, loginUser));
+    public BaseResponse<Boolean> updateApp(
+            @RequestBody AppUpdateRequest body, HttpServletRequest request) {
+        return ResultUtils.success(appService.updateApp(body, userService.getLoginUser(request)));
     }
 
-
-    /**
-     * 删除应用（用户只能删除自己的应用）
-     *
-     * @param deleteRequest 删除请求
-     * @param request       请求
-     * @return 删除结果
-     */
     @PostMapping("/delete")
-    public BaseResponse<Boolean> deleteApp(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
-        if (deleteRequest == null || deleteRequest.getId() <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        User loginUser = userService.getLoginUser(request);
-        long id = deleteRequest.getId();
-        // 判断是否存在
-        App oldApp = appService.getById(id);
-        ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
-        // 仅本人或管理员可删除
-        if (!oldApp.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-        }
-        boolean result = appService.removeById(id);
-        return ResultUtils.success(result);
+    public BaseResponse<Boolean> deleteApp(
+            @RequestBody DeleteRequest body, HttpServletRequest request) {
+        ThrowUtils.throwIf(body == null, ErrorCode.PARAMS_ERROR);
+        var user = userService.getLoginUser(request);
+        return ResultUtils.success(
+                AppPolicy.isAdmin(user)
+                        ? appService.adminDeleteApp(body.getId())
+                        : appService.deleteApp(body.getId(), user));
     }
 
-
-    /**
-     * 根据 id 获取自己的应用或精选应用详情（需登录）
-     *
-     * @param id      应用 id
-     * @param request 请求对象
-     * @return 应用详情
-     */
     @GetMapping("/get/vo")
     public BaseResponse<AppVO> getAppVOById(long id, HttpServletRequest request) {
-        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
-        User loginUser = userService.getLoginUser(request);
-        return ResultUtils.success(appService.getAppVOById(id, loginUser));
+        return ResultUtils.success(appService.getAppVOById(id, userService.getLoginUser(request)));
     }
 
-
-    /**
-     * 分页查询当前用户的应用列表
-     *
-     * @param appQueryRequest 查询请求
-     * @param request         请求对象
-     * @return 应用分页
-     */
-    /**
-     * 分页获取当前用户创建的应用列表
-     *
-     * @param appQueryRequest 查询请求
-     * @param request         请求
-     * @return 应用列表
-     */
     @PostMapping("/my/list/page/vo")
-    public BaseResponse<Page<AppVO>> listMyAppVOByPage(@RequestBody AppQueryRequest appQueryRequest, HttpServletRequest request) {
-        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-        User loginUser = userService.getLoginUser(request);
-        // 限制每页最多 20 个
-        long pageSize = appQueryRequest.getPageSize();
-        ThrowUtils.throwIf(pageSize > 20, ErrorCode.PARAMS_ERROR, "每页最多查询 20 个应用");
-        long pageNum = appQueryRequest.getPageNum();
-        // 只查询当前用户的应用
-        appQueryRequest.setUserId(loginUser.getId());
-        QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
-        Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
-        // 数据封装
-        Page<AppVO> appVOPage = new Page<>(pageNum, pageSize, appPage.getTotalRow());
-        List<AppVO> appVOList = appService.getAppVOList(appPage.getRecords());
-        appVOPage.setRecords(appVOList);
-        return ResultUtils.success(appVOPage);
+    public BaseResponse<Page<AppVO>> listMyAppVOByPage(
+            @RequestBody AppQueryRequest body, HttpServletRequest request) {
+        return ResultUtils.success(
+                appService.listMyAppByPage(body, userService.getLoginUser(request)));
     }
 
-
-//    /**
-//     * 分页查询精选应用列表（无需登录）
-//     *
-//     * @param appQueryRequest 查询请求
-//     * @return 应用分页
-//     */
-//    @PostMapping("/featured/list/page/vo")
-//    public BaseResponse<Page<AppVO>> listFeaturedAppByPage(@RequestBody AppQueryRequest appQueryRequest) {
-//        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-//        Page<AppVO> appPage = appService.listFeaturedAppByPage(appQueryRequest);
-//        return ResultUtils.success(appPage);
-//    }
-
-    /**
-     * 分页获取精选应用列表
-     *
-     * @param appQueryRequest 查询请求
-     * @return 精选应用列表
-     */
     @PostMapping("/good/list/page/vo")
-    public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
-        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-        // 限制每页最多 20 个
-        long pageSize = appQueryRequest.getPageSize();
-        ThrowUtils.throwIf(pageSize > 20, ErrorCode.PARAMS_ERROR, "每页最多查询 20 个应用");
-        long pageNum = appQueryRequest.getPageNum();
-        // 只查询精选的应用
-        appQueryRequest.setPriority(AppConstant.GOOD_APP_PRIORITY);
-        QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
-        // 分页查询
-        Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
-        // 数据封装
-        Page<AppVO> appVOPage = new Page<>(pageNum, pageSize, appPage.getTotalRow());
-        List<AppVO> appVOList = appService.getAppVOList(appPage.getRecords());
-        appVOPage.setRecords(appVOList);
-        return ResultUtils.success(appVOPage);
+    public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest body) {
+        return ResultUtils.success(appService.listFeaturedAppByPage(body));
     }
 
+    @PostMapping("/public/list/page/vo")
+    public BaseResponse<Page<AppVO>> listPublicAppVOByPage(@RequestBody AppQueryRequest body) {
+        return ResultUtils.success(appService.listPublicAppByPage(body));
+    }
 
-    /**
-     * 管理员删除应用
-     *
-     * @param deleteRequest 删除请求
-     * @return 删除结果
-     */
     @PostMapping("/admin/delete")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Boolean> deleteAppByAdmin(@RequestBody DeleteRequest deleteRequest) {
-        if (deleteRequest == null || deleteRequest.getId() <= 0) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        long id = deleteRequest.getId();
-        // 判断是否存在
-        App oldApp = appService.getById(id);
-        ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
-        boolean result = appService.removeById(id);
-        return ResultUtils.success(result);
+    public BaseResponse<Boolean> deleteAppByAdmin(@RequestBody DeleteRequest body) {
+        ThrowUtils.throwIf(body == null, ErrorCode.PARAMS_ERROR);
+        return ResultUtils.success(appService.adminDeleteApp(body.getId()));
     }
 
-
-    /**
-     * 管理员更新应用
-     *
-     * @param appAdminUpdateRequest 更新请求
-     * @return 更新结果
-     */
     @PostMapping("/admin/update")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Boolean> updateAppByAdmin(@RequestBody AppAdminUpdateRequest appAdminUpdateRequest) {
-        return ResultUtils.success(appService.adminUpdateApp(appAdminUpdateRequest));
+    public BaseResponse<Boolean> updateAppByAdmin(@RequestBody AppAdminUpdateRequest body) {
+        return ResultUtils.success(appService.adminUpdateApp(body));
     }
 
-
-    /**
-     * 管理员分页获取应用列表
-     *
-     * @param appQueryRequest 查询请求
-     * @return 应用列表
-     */
     @PostMapping("/admin/list/page/vo")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Page<AppVO>> listAppVOByPageByAdmin(@RequestBody AppQueryRequest appQueryRequest) {
-        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-        long pageNum = appQueryRequest.getPageNum();
-        long pageSize = appQueryRequest.getPageSize();
-        QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
-        Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
-        // 数据封装
-        Page<AppVO> appVOPage = new Page<>(pageNum, pageSize, appPage.getTotalRow());
-        List<AppVO> appVOList = appService.getAppVOList(appPage.getRecords());
-        appVOPage.setRecords(appVOList);
-        return ResultUtils.success(appVOPage);
+    public BaseResponse<Page<AppVO>> listAppVOByPageByAdmin(@RequestBody AppQueryRequest body) {
+        return ResultUtils.success(appService.listAppByPage(body));
     }
 
-
-    /**
-     * 管理员根据 id 获取应用详情
-     *
-     * @param id 应用 id
-     * @return 应用详情
-     */
     @GetMapping("/admin/get/vo")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<AppVO> getAppVOByIdByAdmin(long id) {
-        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
-        // 查询数据库
-        App app = appService.getById(id);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR);
-        // 获取封装类
-        return ResultUtils.success(appService.getAppVO(app));
+        return ResultUtils.success(appService.adminGetAppVOById(id));
     }
 
+    /** SSE 错误始终以事件返回，避免异常处理器将 JSON 写入 text/event-stream。 */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
-                                                       @RequestParam String message,
-                                                       HttpServletRequest request) {
-        // 参数校验
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID无效");
-        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
-        // 获取当前登录用户
-        User loginUser = userService.getLoginUser(request);
-        // 调用服务生成代码（流式）
-        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
-        // 转换为 ServerSentEvent 格式
-        return contentFlux
-            .map(chunk -> {
-                // 将内容包装成JSON对象
-                Map<String, String> wrapper = Map.of("d", chunk);
-                String jsonData = JSONUtil.toJsonStr(wrapper);
-                return ServerSentEvent.<String>builder()
-                    .data(jsonData)
-                    .build();
-            })
-            .concatWith(Mono.just(
-                // 发送结束事件
-                ServerSentEvent.<String>builder()
-                    .event("done")
-                    .data("")
-                    .build()
-            ));
+    public SseEmitter chatToGenCode(
+            @RequestParam Long appId, @RequestParam String message, HttpServletRequest request) {
+        SseEmitter emitter =
+                new SseEmitter(0L) {
+                    @Override
+                    protected void extendResponse(
+                            org.springframework.http.server.ServerHttpResponse response) {
+                        super.extendResponse(response);
+                        response.getHeaders()
+                                .setContentType(
+                                        new MediaType(
+                                                MediaType.TEXT_EVENT_STREAM,
+                                                java.nio.charset.StandardCharsets.UTF_8));
+                        response.getHeaders().setCacheControl("no-store");
+                    }
+                };
+        AtomicReference<Disposable> subscription = new AtomicReference<>();
+        Runnable cancel =
+                () -> {
+                    var current = subscription.get();
+                    if (current != null) current.dispose();
+                };
+        emitter.onCompletion(cancel);
+        emitter.onTimeout(cancel);
+        emitter.onError(error -> cancel.run());
+        var flux =
+                Flux.defer(
+                        () ->
+                                appService.chatToGenCode(
+                                        appId, message, userService.getLoginUser(request)));
+        subscription.set(
+                flux.subscribe(
+                        chunk -> {
+                            try {
+                                emitter.send(
+                                        SseEmitter.event()
+                                                .data(
+                                                        JSONUtil.toJsonStr(Map.of("d", chunk)),
+                                                        MediaType.APPLICATION_JSON));
+                            } catch (Exception closed) {
+                                cancel.run();
+                                emitter.complete();
+                            }
+                        },
+                        error -> {
+                            boolean stopped =
+                                    error
+                                            instanceof
+                                            AppGenerationService.GenerationStoppedException;
+                            int code =
+                                    error instanceof BusinessException business
+                                            ? business.getCode()
+                                            : ErrorCode.SYSTEM_ERROR.getCode();
+                            String text = stopped ? "生成已停止" : AppGenerationService.safeError(error);
+                            try {
+                                emitter.send(
+                                        SseEmitter.event()
+                                                .name(stopped ? "stopped" : "generation-error")
+                                                .data(
+                                                        JSONUtil.toJsonStr(
+                                                                Map.of(
+                                                                        "code", code, "message",
+                                                                        text)),
+                                                        MediaType.APPLICATION_JSON));
+                            } catch (Exception closed) {
+                                /* 客户端已经断开。 */
+                            }
+                            emitter.complete();
+                        },
+                        () -> {
+                            try {
+                                emitter.send(
+                                        SseEmitter.event()
+                                                .name("done")
+                                                .data("{}", MediaType.APPLICATION_JSON));
+                            } catch (Exception closed) {
+                                /* 客户端已经断开。 */
+                            }
+                            emitter.complete();
+                        }));
+        return emitter;
     }
 
-    /**
-     * 应用部署
-     *
-     * @param appDeployRequest 部署请求
-     * @param request          请求
-     * @return 部署 URL
-     */
     @PostMapping("/deploy")
-    public BaseResponse<String> deployApp(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest request) {
-        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
-        Long appId = appDeployRequest.getAppId();
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
-        // 获取当前登录用户
-        User loginUser = userService.getLoginUser(request);
-        // 调用服务部署应用
-        String deployKey = appService.deployApp(appId, loginUser);
-        // 根据当前请求的域名、端口和上下文路径拼接部署地址
-        String deployUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/deploy/")
-            .path(deployKey)
-            .path("/")
-            .toUriString();
-        return ResultUtils.success(deployUrl);
+    public BaseResponse<String> deployApp(
+            @RequestBody AppDeployRequest body, HttpServletRequest request) {
+        ThrowUtils.throwIf(body == null, ErrorCode.PARAMS_ERROR);
+        String key = appService.deployApp(body.getAppId(), userService.getLoginUser(request));
+        return ResultUtils.success(
+                ServletUriComponentsBuilder.fromCurrentContextPath()
+                        .path("/deploy/")
+                        .path(key)
+                        .path("/")
+                        .toUriString());
     }
-
-
-
 }
-

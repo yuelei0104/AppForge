@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import type { AppInfo } from '@/api/workspace'
 import { computed, ref, watch } from 'vue'
 import { AppstoreOutlined, EditOutlined } from '@ant-design/icons-vue'
+import { generationLabel, isOnline } from '@/utils/appStatus'
 import UserInfo from '@/components/UserInfo.vue'
 import { getAppDeployUrl } from '@/utils/appUrls'
 
 const props = withDefaults(
   defineProps<{
-    app: API.AppVO
+    app: AppInfo
     /** 是否显示编辑按钮 */
     editable?: boolean
   }>(),
@@ -16,8 +18,8 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  open: [app: API.AppVO]
-  edit: [app: API.AppVO]
+  open: [app: AppInfo]
+  edit: [app: AppInfo]
 }>()
 
 const coverFailed = ref(false)
@@ -30,7 +32,7 @@ watch(
 
 const appName = computed(() => props.app.appName || '未命名应用')
 const initial = computed(() => appName.value.slice(0, 1).toUpperCase())
-const isFeatured = computed(() => props.app.priority === 99)
+const isFeatured = computed(() => (props.app.priority ?? 0) >= 99)
 
 function handleOpen() {
   emit('open', props.app)
@@ -57,12 +59,14 @@ function handleEdit(event: MouseEvent) {
         <span class="app-card__placeholder-text">{{ initial }}</span>
       </div>
 
-      <a-tag v-if="isFeatured" color="blue" class="app-card__featured">精选</a-tag>
+      <a-tag v-if="isFeatured" color="blue" class="app-card__featured">{{
+        (app.priority ?? 0) >= 999 ? '置顶' : '精选'
+      }}</a-tag>
 
       <div class="app-card__actions">
         <a-button type="primary" @click.stop="handleOpen">查看对话</a-button>
         <a-button
-          v-if="app.deployKey"
+          v-if="isOnline(app) && app.deployKey"
           :href="getAppDeployUrl(app.deployKey)"
           target="_blank"
           rel="noopener noreferrer"
@@ -88,6 +92,16 @@ function handleEdit(event: MouseEvent) {
 
     <div class="app-card__body">
       <UserInfo :user="app.user" :title="appName" :size="40" class="app-card__creator" />
+      <p v-if="app.description" class="app-card__description">{{ app.description }}</p>
+      <div class="app-card__labels">
+        <a-tag v-if="app.visibility === 'PRIVATE'">私有</a-tag>
+        <a-tag
+          v-if="app.generationStatus"
+          :color="app.generationStatus === 'GENERATING' ? 'processing' : 'default'"
+          >{{ generationLabel(app.generationStatus) }}</a-tag
+        >
+        <a-tag v-for="tag in app.tags" :key="tag" color="blue">{{ tag }}</a-tag>
+      </div>
     </div>
   </article>
 </template>
@@ -210,6 +224,28 @@ function handleEdit(event: MouseEvent) {
 
 .app-card__body {
   padding: 16px 18px;
+}
+
+.app-card__description {
+  margin: 12px 0 0;
+  color: #7b8192;
+  font-size: 13px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.app-card__labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+.app-card__labels:empty {
+  display: none;
+}
+.app-card__labels :deep(.ant-tag) {
+  margin: 0;
 }
 
 .app-card__creator {

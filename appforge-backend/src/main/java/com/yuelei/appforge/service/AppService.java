@@ -10,6 +10,7 @@ import com.yuelei.appforge.model.dto.app.AppUpdateRequest;
 import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.model.vo.AppVO;
+
 import reactor.core.publisher.Flux;
 
 import java.util.List;
@@ -25,7 +26,7 @@ public interface AppService extends IService<App> {
      * 创建应用
      *
      * @param appAddRequest 创建请求
-     * @param loginUser     当前登录用户
+     * @param loginUser 当前登录用户
      * @return 新应用 id
      */
     long addApp(AppAddRequest appAddRequest, User loginUser);
@@ -34,7 +35,7 @@ public interface AppService extends IService<App> {
      * 用户更新自己的应用名称与封面
      *
      * @param appUpdateRequest 更新请求
-     * @param loginUser        当前登录用户
+     * @param loginUser 当前登录用户
      * @return 是否成功
      */
     boolean updateApp(AppUpdateRequest appUpdateRequest, User loginUser);
@@ -42,7 +43,7 @@ public interface AppService extends IService<App> {
     /**
      * 用户删除自己的应用
      *
-     * @param id        应用 id
+     * @param id 应用 id
      * @param loginUser 当前登录用户
      * @return 是否成功
      */
@@ -51,7 +52,7 @@ public interface AppService extends IService<App> {
     /**
      * 登录用户查看自己的应用或精选应用详情
      *
-     * @param id        应用 id
+     * @param id 应用 id
      * @param loginUser 当前登录用户
      * @return 应用详情
      */
@@ -61,7 +62,7 @@ public interface AppService extends IService<App> {
      * 分页查询当前用户的应用列表
      *
      * @param appQueryRequest 查询请求
-     * @param loginUser       当前登录用户
+     * @param loginUser 当前登录用户
      * @return 应用分页
      */
     Page<AppVO> listMyAppByPage(AppQueryRequest appQueryRequest, User loginUser);
@@ -73,6 +74,8 @@ public interface AppService extends IService<App> {
      * @return 应用分页
      */
     Page<AppVO> listFeaturedAppByPage(AppQueryRequest appQueryRequest);
+
+    Page<AppVO> listPublicAppByPage(AppQueryRequest appQueryRequest);
 
     /**
      * 管理员删除任意应用
@@ -135,10 +138,9 @@ public interface AppService extends IService<App> {
     /**
      * 部署应用
      *
-     * @param appId     应用 id
+     * @param appId 应用 id
      * @param loginUser 当前登录用户
      * @return 部署标识
      */
     String deployApp(Long appId, User loginUser);
 }
-

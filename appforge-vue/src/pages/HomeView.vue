@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { listPublicApps, type AppInfo, type AppFilters } from '@/api/workspace'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -36,18 +37,21 @@ const quickPrompts = [
 const prompt = ref('')
 const creating = ref(false)
 
-const myApps = ref<API.AppVO[]>([])
+const myApps = ref<AppInfo[]>([])
 const myTotal = ref(0)
 const myPage = ref(1)
 const myPageSize = 6
 const mySearch = ref('')
 const myLoading = ref(false)
 
-const goodApps = ref<API.AppVO[]>([])
+const goodApps = ref<AppInfo[]>([])
 const goodTotal = ref(0)
 const goodPage = ref(1)
 const goodPageSize = 6
 const goodSearch = ref('')
+const goodTag = ref('')
+const myTag = ref('')
+const discovery = ref<'featured' | 'public'>('featured')
 const goodLoading = ref(false)
 
 const isLoggedIn = computed(() => loginUserStore.isLoggedIn)
@@ -102,11 +106,13 @@ async function fetchMyApps() {
   }
   myLoading.value = true
   try {
-    const res = await listMyAppVoByPage({
+    const filters: AppFilters = {
       pageNum: myPage.value,
       pageSize: myPageSize,
-      appName: mySearch.value.trim() || undefined,
-    })
+      searchText: mySearch.value.trim() || undefined,
+      tag: myTag.value.trim() || undefined,
+    }
+    const res = await listMyAppVoByPage(filters)
     if (res.data.code === 0 && res.data.data) {
       myApps.value = res.data.data.records ?? []
       myTotal.value = Number(res.data.data.totalRow ?? 0)
@@ -123,13 +129,18 @@ async function fetchMyApps() {
 async function fetchGoodApps() {
   goodLoading.value = true
   try {
-    const res = await listGoodAppVoByPage({
+    const filters: AppFilters = {
       pageNum: goodPage.value,
       pageSize: goodPageSize,
-      appName: goodSearch.value.trim() || undefined,
+      searchText: goodSearch.value.trim() || undefined,
+      tag: goodTag.value.trim() || undefined,
       sortField: 'createTime',
       sortOrder: 'desc',
-    })
+    }
+    const res =
+      discovery.value === 'featured'
+        ? await listGoodAppVoByPage(filters)
+        : await listPublicApps(filters)
     if (res.data.code === 0 && res.data.data) {
       goodApps.value = res.data.data.records ?? []
       goodTotal.value = Number(res.data.data.totalRow ?? 0)
@@ -163,15 +174,15 @@ function handleGoodPageChange(page: number) {
   void fetchGoodApps()
 }
 
-function openMyApp(app: API.AppVO) {
+function openMyApp(app: AppInfo) {
   void router.push({ path: `/app/chat/${String(app.id)}`, query: { view: '1' } })
 }
 
-function editMyApp(app: API.AppVO) {
+function editMyApp(app: AppInfo) {
   void router.push(`/app/edit/${String(app.id)}`)
 }
 
-function openGoodApp(app: API.AppVO) {
+function openGoodApp(app: AppInfo) {
   openMyApp(app)
 }
 
@@ -240,12 +251,20 @@ onMounted(() => {
           v-if="isLoggedIn"
           v-model:value="mySearch"
           class="section__search"
-          placeholder="搜索应用名称"
+          placeholder="搜索名称、描述或标签"
           allow-clear
           @search="handleMySearch"
         />
       </div>
 
+      <a-input-search
+        v-if="isLoggedIn"
+        v-model:value="myTag"
+        class="tag-filter"
+        placeholder="按标签精确筛选"
+        allow-clear
+        @search="handleMySearch"
+      />
       <div v-if="!isLoggedIn" class="login-tip">
         <div>
           <h3 class="login-tip__title">登录后查看你的作品</h3>
@@ -287,23 +306,40 @@ onMounted(() => {
     <section class="section section--featured">
       <div class="section__head">
         <div>
-          <h2 class="section__title">精选案例</h2>
+          <h2 class="section__title">{{ discovery === 'featured' ? '精选案例' : '公开应用' }}</h2>
           <p class="section__desc">看看别人用一句话创造了什么</p>
         </div>
         <a-input-search
           v-model:value="goodSearch"
           class="section__search"
-          placeholder="搜索精选应用"
+          placeholder="搜索名称、描述或标签"
           allow-clear
           @search="handleGoodSearch"
         />
       </div>
 
+      <div class="discovery-filters">
+        <a-radio-group v-model:value="discovery" @change="handleGoodSearch">
+          <a-radio-button value="featured">精选案例</a-radio-button>
+          <a-radio-button value="public">全部公开应用</a-radio-button>
+        </a-radio-group>
+        <a-input-search
+          v-model:value="goodTag"
+          class="tag-filter"
+          placeholder="按标签精确筛选"
+          allow-clear
+          @search="handleGoodSearch"
+        />
+      </div>
       <a-spin :spinning="goodLoading">
         <div v-if="goodApps.length" class="app-grid">
           <AppCard v-for="app in goodApps" :key="String(app.id)" :app="app" @open="openGoodApp" />
         </div>
-        <a-empty v-else class="empty-state" description="暂时还没有精选应用" />
+        <a-empty
+          v-else
+          class="empty-state"
+          :description="discovery === 'featured' ? '暂时还没有精选应用' : '没有符合条件的公开应用'"
+        />
       </a-spin>
 
       <a-pagination
@@ -469,6 +505,18 @@ onMounted(() => {
 
 .section__search {
   width: 250px;
+}
+
+.tag-filter {
+  max-width: 260px;
+  margin-bottom: 16px;
+}
+.discovery-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 6px;
 }
 
 .app-grid {

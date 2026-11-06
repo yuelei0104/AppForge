@@ -68,3 +68,8 @@ git commit -m "refactor: run backend directly from its source root"
 按 [工程结构](docs/01-project-layout.md) 和 [开发路线](docs/02-roadmap.md) 逐步开发。先完成本机启动验收，再添加下一项功能。
 
 第三方工具说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+
+## 应用工作台扩展
+
+版本管理、私有/公开权限、标签搜索、停止生成、部署下线与精选审核的升级步骤见 [应用工作台扩展](docs/03-app-workspace.md)。已有数据库必须先执行其中的一次性升级 SQL，再重启后端。

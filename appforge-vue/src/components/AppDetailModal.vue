@@ -1,20 +1,25 @@
 <script setup lang="ts">
+import type { AppInfo } from '@/api/workspace'
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons-vue'
 import UserInfo from '@/components/UserInfo.vue'
+import { generationLabel, featureLabel, isOnline } from '@/utils/appStatus'
 import { formatDateTime } from '@/utils/date'
 
 defineProps<{
   open: boolean
-  app: API.AppVO | null
+  app: AppInfo | null
   canManage: boolean
   deleting?: boolean
   busy?: boolean
+  isOwner?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
   edit: []
   delete: []
+  offline: []
+  feature: []
 }>()
 </script>
 
@@ -31,6 +36,21 @@ const emit = defineEmits<{
       <a-descriptions-item label="创建者">
         <UserInfo :user="app.user" />
       </a-descriptions-item>
+      <a-descriptions-item label="可见范围">{{
+        app.visibility === 'PUBLIC' ? '公开' : '私有'
+      }}</a-descriptions-item>
+      <a-descriptions-item label="生成状态"
+        >{{ generationLabel(app.generationStatus) }} · v{{
+          app.currentVersion || 0
+        }}</a-descriptions-item
+      >
+      <a-descriptions-item label="部署状态">{{
+        isOnline(app) ? `在线 · v${app.deployedVersion || 0}` : '已下线'
+      }}</a-descriptions-item>
+      <a-descriptions-item label="精选申请"
+        >{{ featureLabel(app.featureStatus)
+        }}<span v-if="app.featureReason"> · {{ app.featureReason }}</span></a-descriptions-item
+      >
       <a-descriptions-item label="创建时间">
         {{ formatDateTime(app.createTime) }}
       </a-descriptions-item>
@@ -38,7 +58,7 @@ const emit = defineEmits<{
 
     <template v-if="app && canManage">
       <a-divider />
-      <a-space>
+      <a-space wrap>
         <a-button type="primary" :disabled="busy || deleting" @click="emit('edit')">
           <template #icon><EditOutlined /></template>
           修改
@@ -56,6 +76,24 @@ const emit = defineEmits<{
             删除
           </a-button>
         </a-popconfirm>
+        <a-popconfirm
+          v-if="isOnline(app)"
+          title="确认下线应用？"
+          description="下线后部署链接将无法访问，之后可以重新部署。"
+          @confirm="emit('offline')"
+        >
+          <a-button :disabled="busy || deleting">下线应用</a-button>
+        </a-popconfirm>
+        <a-button
+          v-if="
+            isOwner &&
+            app.visibility === 'PUBLIC' &&
+            !['PENDING', 'APPROVED'].includes(app.featureStatus || '')
+          "
+          :disabled="busy || deleting"
+          @click="emit('feature')"
+          >申请精选</a-button
+        >
       </a-space>
     </template>
   </a-modal>

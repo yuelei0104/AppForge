@@ -2,7 +2,7 @@
 import { message } from 'ant-design-vue'
 import { CopyOutlined } from '@ant-design/icons-vue'
 
-const props = defineProps<{ open: boolean; url: string }>()
+const props = defineProps<{ open: boolean; url: string; isPrivate?: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 async function copyDeployUrl() {
@@ -30,6 +30,9 @@ async function copyDeployUrl() {
       class="deploy-modal__result"
     >
       <template #extra>
+        <p v-if="isPrivate" class="deploy-modal__privacy">
+          当前应用为私有，仅你和管理员可访问。可在编辑页修改可见范围。
+        </p>
         <a-input :value="url" readonly aria-label="部署地址">
           <template #suffix>
             <a-tooltip title="复制部署地址">
@@ -51,6 +54,12 @@ async function copyDeployUrl() {
 </template>
 
 <style scoped>
+.deploy-modal__privacy {
+  margin: 0 0 16px;
+  color: #8c6b30;
+  font-size: 13px;
+}
+
 .deploy-modal__result {
   padding: 28px 16px 16px;
 }
