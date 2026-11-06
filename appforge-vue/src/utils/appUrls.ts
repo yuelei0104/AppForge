@@ -8,3 +8,15 @@ export function getAppDeployUrl(deployKey: string) {
 export function getAppPreviewUrl(appId: string) {
   return `${API_BASE_URL}/static/${encodeURIComponent(appId)}/`
 }
+
+export function isValidCoverUrl(value: string) {
+  if (!value.trim()) {
+    return true
+  }
+  try {
+    const url = new URL(value.trim())
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}

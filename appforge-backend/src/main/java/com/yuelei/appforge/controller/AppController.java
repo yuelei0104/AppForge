@@ -30,7 +30,6 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -80,7 +79,7 @@ public class AppController {
 
 
     /**
-     * 更新应用（用户只能更新自己的应用名称）
+     * 更新应用（用户只能更新自己的应用名称与封面）
      *
      * @param appUpdateRequest 更新请求
      * @param request          请求
@@ -88,26 +87,8 @@ public class AppController {
      */
     @PostMapping("/update")
     public BaseResponse<Boolean> updateApp(@RequestBody AppUpdateRequest appUpdateRequest, HttpServletRequest request) {
-        if (appUpdateRequest == null || appUpdateRequest.getId() == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
         User loginUser = userService.getLoginUser(request);
-        long id = appUpdateRequest.getId();
-        // 判断是否存在
-        App oldApp = appService.getById(id);
-        ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
-        // 仅本人可更新
-        if (!oldApp.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-        }
-        App app = new App();
-        app.setId(id);
-        app.setAppName(appUpdateRequest.getAppName());
-        // 设置编辑时间
-        app.setEditTime(LocalDateTime.now());
-        boolean result = appService.updateById(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        return ResultUtils.success(true);
+        return ResultUtils.success(appService.updateApp(appUpdateRequest, loginUser));
     }
 
 
@@ -255,20 +236,7 @@ public class AppController {
     @PostMapping("/admin/update")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateAppByAdmin(@RequestBody AppAdminUpdateRequest appAdminUpdateRequest) {
-        if (appAdminUpdateRequest == null || appAdminUpdateRequest.getId() == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
-        }
-        long id = appAdminUpdateRequest.getId();
-        // 判断是否存在
-        App oldApp = appService.getById(id);
-        ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
-        App app = new App();
-        BeanUtil.copyProperties(appAdminUpdateRequest, app);
-        // 设置编辑时间
-        app.setEditTime(LocalDateTime.now());
-        boolean result = appService.updateById(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        return ResultUtils.success(true);
+        return ResultUtils.success(appService.adminUpdateApp(appAdminUpdateRequest));
     }
 
 

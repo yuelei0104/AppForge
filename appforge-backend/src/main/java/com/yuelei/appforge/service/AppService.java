@@ -31,7 +31,7 @@ public interface AppService extends IService<App> {
     long addApp(AppAddRequest appAddRequest, User loginUser);
 
     /**
-     * 用户更新自己的应用（仅支持修改名称）
+     * 用户更新自己的应用名称与封面
      *
      * @param appUpdateRequest 更新请求
      * @param loginUser        当前登录用户
@@ -49,7 +49,7 @@ public interface AppService extends IService<App> {
     boolean deleteApp(long id, User loginUser);
 
     /**
-     * 用户查看自己的应用详情
+     * 登录用户查看自己的应用或精选应用详情
      *
      * @param id        应用 id
      * @param loginUser 当前登录用户
@@ -141,3 +141,4 @@ public interface AppService extends IService<App> {
      */
     String deployApp(Long appId, User loginUser);
 }
+
