@@ -13,7 +13,6 @@ import {
 } from '@/api/appController'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { formatDateTime } from '@/utils/date'
-import logoUrl from '@/assets/logo.png'
 import { getAppDeployUrl, getAppPreviewUrl, isValidCoverUrl } from '@/utils/appUrls'
 
 const route = useRoute()
@@ -179,12 +178,10 @@ onMounted(() => {
           <template #icon>
             <ArrowLeftOutlined />
           </template>
+          返回
         </a-button>
         <div>
           <h1 class="app-edit-page__title">编辑应用信息</h1>
-          <p class="app-edit-page__desc">
-            {{ isAdmin ? '管理员可修改应用名称、封面和优先级' : '修改自己的应用名称和封面' }}
-          </p>
         </div>
       </div>
       <div class="app-edit-page__header-actions">
@@ -205,122 +202,123 @@ onMounted(() => {
     </div>
 
     <a-spin :spinning="loading">
-      <a-card v-if="app" title="基本信息" :bordered="false" class="app-edit-page__card">
-        <a-form layout="vertical">
-          <a-form-item label="应用名称" required>
-            <a-input
-              v-model:value="form.appName"
-              :maxlength="256"
-              show-count
-              placeholder="请输入应用名称"
-            />
-          </a-form-item>
+      <div v-if="app" class="app-edit-page__sections">
+        <a-card title="基本信息" class="app-edit-page__card">
+          <a-form layout="vertical">
+            <a-form-item label="应用名称" required>
+              <a-input
+                v-model:value="form.appName"
+                :maxlength="256"
+                show-count
+                placeholder="请输入应用名称"
+              />
+            </a-form-item>
 
-          <a-form-item label="应用封面" extra="支持 HTTP / HTTPS 图片链接，建议尺寸：400×300">
-            <a-input v-model:value="form.cover" :maxlength="512" placeholder="请输入封面图片 URL" />
-            <div
-              v-if="form.cover.trim() && isValidCoverUrl(form.cover)"
-              class="app-edit-page__cover-preview"
-            >
-              <a-image :src="form.cover.trim()" :width="180" alt="应用封面预览" />
-            </div>
-          </a-form-item>
-          <a-form-item
-            label="优先级"
-            :extra="isAdmin ? '优先级 99 表示精选应用，0 表示普通应用' : '只有管理员可以修改优先级'"
-          >
-            <a-input-number
-              v-model:value="form.priority"
-              :min="0"
-              :precision="0"
-              :disabled="!isAdmin"
-            />
-          </a-form-item>
-
-          <a-form-item label="初始提示词" extra="初始提示词不可修改">
-            <a-textarea :value="app.initPrompt" :rows="4" disabled />
-          </a-form-item>
-
-          <a-form-item label="生成类型" extra="生成类型不可修改">
-            <a-input :value="app.codeGenType || '-'" disabled />
-          </a-form-item>
-
-          <a-form-item label="部署标识" extra="部署标识由系统生成，不可修改">
-            <a-input :value="app.deployKey || ''" placeholder="尚未部署" disabled />
-          </a-form-item>
-
-          <a-space wrap>
-            <a-button
-              type="primary"
-              :loading="saving"
-              :disabled="!canManage || deleting || saving"
-              @click="handleSave"
-            >
-              <template #icon><SaveOutlined /></template>
-              保存修改
-            </a-button>
-            <a-button :disabled="!canManage || saving || deleting" @click="handleReset"
-              >重置</a-button
-            >
-            <a-button type="link" @click="enterChat">进入对话</a-button>
-          </a-space>
-        </a-form>
-      </a-card>
-
-      <a-card
-        v-if="app"
-        title="应用信息"
-        :bordered="false"
-        class="app-edit-page__card app-edit-page__metadata"
-      >
-        <a-descriptions bordered :column="{ xs: 1, sm: 2 }">
-          <a-descriptions-item label="应用 ID">{{ app.id }}</a-descriptions-item>
-          <a-descriptions-item label="创建者">
-            <span class="app-edit-page__user">
-              <a-avatar :src="app.user?.userAvatar || undefined" :size="24">
-                {{ (app.user?.userName || app.user?.userAccount || '用').slice(0, 1) }}
-              </a-avatar>
-              {{ app.user?.userName || app.user?.userAccount || '-' }}
-            </span>
-          </a-descriptions-item>
-
-          <a-descriptions-item label="创建时间">
-            {{ formatDateTime(app.createTime) }}
-          </a-descriptions-item>
-          <a-descriptions-item label="更新时间">{{
-            formatDateTime(app.updateTime)
-          }}</a-descriptions-item>
-          <a-descriptions-item label="部署时间">{{
-            formatDateTime(app.deployedTime)
-          }}</a-descriptions-item>
-          <a-descriptions-item label="访问链接">
-            <a-space wrap>
-              <a :href="getAppPreviewUrl(appId)" target="_blank" rel="noopener noreferrer"
-                >查看预览</a
+            <a-form-item label="应用封面" extra="支持 HTTP / HTTPS 图片链接，建议尺寸：400×300">
+              <a-input
+                v-model:value="form.cover"
+                :maxlength="512"
+                placeholder="请输入封面图片 URL"
+              />
+              <div
+                v-if="form.cover.trim() && isValidCoverUrl(form.cover)"
+                class="app-edit-page__cover-preview"
               >
-              <a
-                v-if="app.deployKey"
-                :href="getAppDeployUrl(app.deployKey)"
-                target="_blank"
-                rel="noopener noreferrer"
-                >查看作品</a
+                <a-image :src="form.cover.trim()" alt="应用封面预览" />
+              </div>
+            </a-form-item>
+            <a-form-item
+              label="优先级"
+              :extra="
+                isAdmin ? '优先级 99 表示精选应用，0 表示普通应用' : '只有管理员可以修改优先级'
+              "
+            >
+              <a-input-number
+                v-model:value="form.priority"
+                class="app-edit-page__priority"
+                :min="0"
+                :precision="0"
+                :disabled="!isAdmin"
+              />
+            </a-form-item>
+
+            <a-form-item label="初始提示词" extra="初始提示词不可修改">
+              <a-textarea :value="app.initPrompt" :rows="4" :maxlength="2000" show-count disabled />
+            </a-form-item>
+
+            <a-form-item label="生成类型" extra="生成类型不可修改">
+              <a-input :value="app.codeGenType || '-'" disabled />
+            </a-form-item>
+
+            <a-form-item label="部署标识" extra="部署标识由系统生成，不可修改">
+              <a-input :value="app.deployKey || ''" placeholder="尚未部署" disabled />
+            </a-form-item>
+
+            <a-space wrap class="app-edit-page__form-actions">
+              <a-button
+                type="primary"
+                :loading="saving"
+                :disabled="!canManage || deleting || saving"
+                @click="handleSave"
               >
+                <template #icon><SaveOutlined /></template>
+                保存修改
+              </a-button>
+              <a-button :disabled="!canManage || saving || deleting" @click="handleReset"
+                >重置</a-button
+              >
+              <a-button type="link" @click="enterChat">进入对话</a-button>
             </a-space>
-          </a-descriptions-item>
-        </a-descriptions>
+          </a-form>
+        </a-card>
 
-        <div class="app-edit-page__brand">
-          <img :src="logoUrl" alt="AppForge" />
-          <span>AppForge · 用一句话生成应用</span>
-        </div>
-      </a-card>
+        <a-card title="应用信息" class="app-edit-page__card app-edit-page__metadata">
+          <a-descriptions bordered :column="{ xs: 1, sm: 2 }">
+            <a-descriptions-item label="应用 ID"
+              ><span class="app-edit-page__id">{{ app.id }}</span></a-descriptions-item
+            >
+            <a-descriptions-item label="创建者">
+              <span class="app-edit-page__user">
+                <a-avatar :src="app.user?.userAvatar || undefined" :size="24">
+                  {{ (app.user?.userName || app.user?.userAccount || '用').slice(0, 1) }}
+                </a-avatar>
+                {{ app.user?.userName || app.user?.userAccount || '-' }}
+              </span>
+            </a-descriptions-item>
+
+            <a-descriptions-item label="创建时间">
+              {{ formatDateTime(app.createTime) }}
+            </a-descriptions-item>
+            <a-descriptions-item label="更新时间">{{
+              formatDateTime(app.updateTime)
+            }}</a-descriptions-item>
+            <a-descriptions-item label="部署时间">{{
+              formatDateTime(app.deployedTime)
+            }}</a-descriptions-item>
+            <a-descriptions-item label="访问链接">
+              <a-space wrap>
+                <a :href="getAppPreviewUrl(appId)" target="_blank" rel="noopener noreferrer"
+                  >查看预览</a
+                >
+                <a
+                  v-if="app.deployKey"
+                  :href="getAppDeployUrl(app.deployKey)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >查看作品</a
+                >
+              </a-space>
+            </a-descriptions-item>
+          </a-descriptions>
+        </a-card>
+      </div>
     </a-spin>
   </div>
 </template>
 
 <style scoped>
 .app-edit-page {
-  max-width: 820px;
+  max-width: 1040px;
   margin: 0 auto;
 }
 
@@ -328,51 +326,117 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
 }
 
 .app-edit-page__header-left {
   display: flex;
-  gap: 8px;
-  align-items: flex-start;
+  gap: 12px;
+  align-items: center;
 }
 
 .app-edit-page__title {
-  margin: 2px 0 0;
-  font-size: 24px;
-  font-weight: 700;
-  color: #101828;
-}
-
-.app-edit-page__desc {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #98a2b3;
+  margin: 0;
+  font-size: 22px;
+  line-height: 32px;
+  font-weight: 600;
+  color: #262626;
 }
 
 .app-edit-page__header-actions {
   display: flex;
-  gap: 10px;
   align-items: center;
 }
 
-.app-edit-page__card {
-  border-radius: 16px;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
-}
-
-.app-edit-page__cover-preview {
-  padding: 16px;
-  margin-top: 12px;
-  background: #f8fafc;
-  border: 1px solid #edf0f5;
+.app-edit-page__sections {
+  padding: 24px;
+  background: #f7f7f7;
   border-radius: 8px;
 }
 
+.app-edit-page__card {
+  overflow: hidden;
+  border: 1px solid #ededed;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.app-edit-page__card :deep(.ant-card-head) {
+  min-height: 56px;
+  padding: 0 24px;
+  font-size: 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #ededed;
+}
+
+.app-edit-page__card :deep(.ant-card-body) {
+  padding: 24px;
+}
+
+.app-edit-page__card :deep(.ant-form-item) {
+  margin-bottom: 28px;
+}
+
+.app-edit-page__card :deep(.ant-form-item-label > label) {
+  color: #262626;
+}
+
+.app-edit-page__card :deep(.ant-form-item-extra) {
+  padding-top: 4px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.app-edit-page__cover-preview {
+  min-height: 190px;
+  padding: 12px;
+  margin-top: 12px;
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+}
+
+.app-edit-page__cover-preview :deep(.ant-image) {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+}
+
+.app-edit-page__cover-preview :deep(.ant-image-img) {
+  width: 100%;
+  height: 165px;
+  object-fit: cover;
+}
+
+.app-edit-page__priority {
+  width: 200px;
+  max-width: 100%;
+}
+
+.app-edit-page__form-actions {
+  margin-bottom: 8px;
+}
+
 .app-edit-page__metadata {
-  margin-top: 20px;
+  margin-top: 24px;
+}
+
+.app-edit-page__metadata :deep(.ant-descriptions-item-label) {
+  width: 112px;
+  white-space: nowrap;
+  background: #fafafa;
+}
+
+.app-edit-page__metadata :deep(.ant-descriptions-item-content) {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-edit-page__id {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
 }
 
 .app-edit-page__user {
@@ -381,30 +445,34 @@ onMounted(() => {
   align-items: center;
 }
 
-.app-edit-page__brand {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding-top: 18px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #aab4c5;
-  border-top: 1px dashed #edf0f5;
-}
-
-.app-edit-page__brand img {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+.app-edit-page__user :deep(.ant-avatar) {
+  flex-shrink: 0;
 }
 
 @media (max-width: 767px) {
-  .app-edit-page__header {
-    align-items: stretch;
+  .app-edit-page__sections {
+    padding: 12px;
   }
 
-  .app-edit-page__header-actions {
-    justify-content: flex-end;
+  .app-edit-page__card :deep(.ant-card-head) {
+    padding: 0 16px;
+  }
+
+  .app-edit-page__card :deep(.ant-card-body) {
+    padding: 20px 16px;
+  }
+
+  .app-edit-page__metadata :deep(.ant-descriptions-item-label),
+  .app-edit-page__metadata :deep(.ant-descriptions-item-content) {
+    padding: 12px;
+  }
+
+  .app-edit-page__metadata :deep(.ant-descriptions-item-label) {
+    width: 88px;
+  }
+
+  .app-edit-page__title {
+    font-size: 20px;
   }
 }
 </style>
