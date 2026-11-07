@@ -1,10 +1,10 @@
 package com.yuelei.appforge.service.impl;
 
 import cn.hutool.core.util.StrUtil;
+
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
-
 import com.yuelei.appforge.constant.UserConstant;
 import com.yuelei.appforge.exception.ErrorCode;
 import com.yuelei.appforge.exception.ThrowUtils;
@@ -16,23 +16,32 @@ import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.model.enums.ChatHistoryMessageTypeEnum;
 import com.yuelei.appforge.service.AppService;
 import com.yuelei.appforge.service.ChatHistoryService;
+
 import jakarta.annotation.Resource;
+
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
- *  服务层实现。
+ * 服务层实现。
  *
  * @author yuelei
  */
 @Service
-public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatHistory>  implements ChatHistoryService {
+public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatHistory>
+        implements ChatHistoryService {
 
-    @Resource
-    @Lazy
-    private AppService appService;
+    @Resource private JdbcTemplate jdbcTemplate;
+
+    @Resource @Lazy private AppService appService;
 
     @Override
     public boolean addChatMessage(Long appId, String message, String messageType, Long userId) {
@@ -41,25 +50,26 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         ThrowUtils.throwIf(StrUtil.isBlank(messageType), ErrorCode.PARAMS_ERROR, "消息类型不能为空");
         ThrowUtils.throwIf(userId == null || userId <= 0, ErrorCode.PARAMS_ERROR, "用户ID不能为空");
         // 验证消息类型是否有效
-        ChatHistoryMessageTypeEnum messageTypeEnum = ChatHistoryMessageTypeEnum.getEnumByValue(messageType);
-        ThrowUtils.throwIf(messageTypeEnum == null, ErrorCode.PARAMS_ERROR, "不支持的消息类型: " + messageType);
-        ChatHistory chatHistory = ChatHistory.builder()
-            .appId(appId)
-            .message(message)
-            .messageType(messageType)
-            .userId(userId)
-            .build();
+        ChatHistoryMessageTypeEnum messageTypeEnum =
+                ChatHistoryMessageTypeEnum.getEnumByValue(messageType);
+        ThrowUtils.throwIf(
+                messageTypeEnum == null, ErrorCode.PARAMS_ERROR, "不支持的消息类型: " + messageType);
+        ChatHistory chatHistory =
+                ChatHistory.builder()
+                        .appId(appId)
+                        .message(message)
+                        .messageType(messageType)
+                        .userId(userId)
+                        .build();
         return this.save(chatHistory);
     }
 
     @Override
     public boolean deleteByAppId(Long appId) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
-        QueryWrapper queryWrapper = QueryWrapper.create()
-            .eq("appId", appId);
+        QueryWrapper queryWrapper = QueryWrapper.create().eq("appId", appId);
         return this.remove(queryWrapper);
     }
-
 
     /**
      * 获取查询包装类
@@ -82,46 +92,96 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         String sortField = chatHistoryQueryRequest.getSortField();
         String sortOrder = chatHistoryQueryRequest.getSortOrder();
         // 拼接查询条件
-        queryWrapper.eq("id", id)
-            .like("message", message)
-            .eq("messageType", messageType)
-            .eq("appId", appId)
-            .eq("userId", userId);
+        queryWrapper
+                .eq("id", id)
+                .like("message", message)
+                .eq("messageType", messageType)
+                .eq("appId", appId)
+                .eq("userId", userId);
         // 游标查询逻辑 - 只使用 createTime 作为游标
         if (lastCreateTime != null) {
             queryWrapper.lt("createTime", lastCreateTime);
         }
         // 排序
         if (StrUtil.isNotBlank(sortField)) {
-            queryWrapper.orderBy(sortField, "ascend".equals(sortOrder));
+            ThrowUtils.throwIf(
+                    !Set.of("id", "createTime", "updateTime").contains(sortField),
+                    ErrorCode.PARAMS_ERROR,
+                    "不支持的排序字段");
+            queryWrapper.orderBy(sortField, "ascend".equals(sortOrder) || "asc".equals(sortOrder));
         } else {
             // 默认按创建时间降序排列
             queryWrapper.orderBy("createTime", false);
         }
+        queryWrapper.orderBy("id", "ascend".equals(sortOrder) || "asc".equals(sortOrder));
         return queryWrapper;
     }
 
     @Override
-    public Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize,
-                                                      LocalDateTime lastCreateTime,
-                                                      User loginUser) {
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
-        ThrowUtils.throwIf(pageSize <= 0 || pageSize > 50, ErrorCode.PARAMS_ERROR, "页面大小必须在1-50之间");
-        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
-        // 验证权限：只有应用创建者和管理员可以查看
-        App app = appService.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        boolean isAdmin = UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole());
-        boolean isCreator = app.getUserId().equals(loginUser.getId());
-        ThrowUtils.throwIf(!isAdmin && !isCreator, ErrorCode.NO_AUTH_ERROR, "无权查看该应用的对话历史");
-        // 构建查询条件
-        ChatHistoryQueryRequest queryRequest = new ChatHistoryQueryRequest();
-        queryRequest.setAppId(appId);
-        queryRequest.setLastCreateTime(lastCreateTime);
-        QueryWrapper queryWrapper = this.getQueryWrapper(queryRequest);
-        // 查询数据
-        return this.page(Page.of(1, pageSize), queryWrapper);
+    public Page<ChatHistory> listAppChatHistoryByPage(
+            Long appId, int pageSize, LocalDateTime lastCreateTime, User loginUser) {
+        validateAccess(appId, pageSize, loginUser);
+        return queryHistory(appId, pageSize, lastCreateTime, null);
     }
 
+    @Override
+    public Page<ChatHistory> listAppChatHistoryByPage(
+            Long appId, int pageSize, LocalDateTime lastCreateTime, Long lastId, User loginUser) {
+        ThrowUtils.throwIf(
+                lastId != null && (lastId <= 0 || lastCreateTime == null),
+                ErrorCode.PARAMS_ERROR,
+                "历史游标无效");
+        // 复用原接口的权限和分页校验，避免游标入口绕过权限。
+        validateAccess(appId, pageSize, loginUser);
+        return queryHistory(appId, pageSize, lastCreateTime, lastId);
+    }
 
+    private void validateAccess(Long appId, int pageSize, User loginUser) {
+        ThrowUtils.throwIf(
+                appId == null || appId <= 0 || pageSize < 1 || pageSize > 50,
+                ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        ThrowUtils.throwIf(
+                !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())
+                        && !Objects.equals(app.getUserId(), loginUser.getId()),
+                ErrorCode.NO_AUTH_ERROR,
+                "无权查看该应用的对话历史");
+    }
+
+    private Page<ChatHistory> queryHistory(
+            Long appId, int pageSize, LocalDateTime lastCreateTime, Long lastId) {
+        String sql =
+                "SELECT id,message,messageType,appId,userId,createTime,updateTime FROM chat_history"
+                        + " WHERE appId=? AND isDelete=0";
+        List<Object> params = new ArrayList<>();
+        params.add(appId);
+        if (lastCreateTime != null) {
+            if (lastId != null) {
+                sql += " AND (createTime < ? OR (createTime = ? AND id < ?))";
+                params.add(lastCreateTime);
+                params.add(lastCreateTime);
+                params.add(lastId);
+            } else {
+                sql += " AND createTime < ?";
+                params.add(lastCreateTime);
+            }
+        }
+        sql += " ORDER BY createTime DESC,id DESC LIMIT ?";
+        params.add(pageSize);
+        var records =
+                jdbcTemplate.query(
+                        sql,
+                        BeanPropertyRowMapper.newInstance(ChatHistory.class),
+                        params.toArray());
+        Page<ChatHistory> page = Page.of(1, pageSize);
+        page.setRecords(records);
+        page.setTotalRow(
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM chat_history WHERE appId=? AND isDelete=0",
+                        Long.class,
+                        appId));
+        return page;
+    }
 }

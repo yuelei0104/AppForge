@@ -175,7 +175,7 @@ function handleGoodPageChange(page: number) {
 }
 
 function openMyApp(app: AppInfo) {
-  void router.push({ path: `/app/chat/${String(app.id)}`, query: { view: '1' } })
+  void router.push({ path: `/app/chat/${String(app.id)}` })
 }
 
 function editMyApp(app: AppInfo) {

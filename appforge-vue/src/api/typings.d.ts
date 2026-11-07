@@ -10,7 +10,7 @@ declare namespace API {
   }
 
   type AppAdminUpdateRequest = {
-    id?: number
+    id?: string | number
     appName?: string
     cover?: string
     priority?: number
@@ -20,7 +20,7 @@ declare namespace API {
   }
 
   type AppDeployRequest = {
-    appId?: number
+    appId?: string | number
   }
 
   type AppQueryRequest = {
@@ -28,14 +28,14 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: number
+    id?: string | number
     appName?: string
     cover?: string
     initPrompt?: string
     codeGenType?: string
     deployKey?: string
     priority?: number
-    userId?: number
+    userId?: string | number
     searchText?: string
     tag?: string
     visibility?: string
@@ -44,7 +44,7 @@ declare namespace API {
   }
 
   type AppUpdateRequest = {
-    id?: number
+    id?: string | number
     appName?: string
     cover?: string
     description?: string
@@ -71,7 +71,7 @@ declare namespace API {
     deploymentStatus?: string
     featureStatus?: string
     featureReason?: string
-    id?: number
+    id?: string | number
     appName?: string
     cover?: string
     initPrompt?: string
@@ -79,7 +79,7 @@ declare namespace API {
     deployKey?: string
     deployedTime?: string
     priority?: number
-    userId?: number
+    userId?: string | number
     createTime?: string
     updateTime?: string
     user?: UserVO
@@ -117,7 +117,7 @@ declare namespace API {
 
   type BaseResponseLong = {
     code?: number
-    data?: number
+    data?: string | number
     message?: string
   }
 
@@ -158,25 +158,25 @@ declare namespace API {
   }
 
   type chatToGenCodeParams = {
-    appId: number
+    appId: string | number
     message: string
   }
 
   type DeleteRequest = {
-    id?: number
+    id?: string | number
   }
 
   type filesParams = {
-    appId: number
+    appId: string | number
     version: number
   }
 
   type getAppVOByIdByAdminParams = {
-    id: number
+    id: string | number
   }
 
   type getAppVOByIdParams = {
-    id: number
+    id: string | number
   }
 
   type getDeployIndex1Params = {
@@ -193,28 +193,28 @@ declare namespace API {
   }
 
   type getPreviewIndex1Params = {
-    appId: number
+    appId: string | number
   }
 
   type getPreviewIndexParams = {
-    appId: number
+    appId: string | number
   }
 
   type getPreviewResourceParams = {
-    appId: number
+    appId: string | number
     fileName: string
   }
 
   type getUserByIdParams = {
-    id: number
+    id: string | number
   }
 
   type getUserVOByIdParams = {
-    id: number
+    id: string | number
   }
 
   type LoginUserVO = {
-    id?: number
+    id?: string | number
     userAccount?: string
     userName?: string
     userAvatar?: string
@@ -247,7 +247,7 @@ declare namespace API {
   }
 
   type User = {
-    id?: number
+    id?: string | number
     userAccount?: string
     userPassword?: string
     userName?: string
@@ -278,7 +278,7 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: number
+    id?: string | number
     userName?: string
     userAccount?: string
     userProfile?: string
@@ -292,7 +292,7 @@ declare namespace API {
   }
 
   type UserUpdateRequest = {
-    id?: number
+    id?: string | number
     userName?: string
     userAvatar?: string
     userProfile?: string
@@ -300,7 +300,7 @@ declare namespace API {
   }
 
   type UserVO = {
-    id?: number
+    id?: string | number
     userAccount?: string
     userName?: string
     userAvatar?: string
@@ -310,11 +310,11 @@ declare namespace API {
   }
 
   type versionsParams = {
-    appId: number
+    appId: string | number
   }
 
   type WorkspaceRequest = {
-    appId?: number
+    appId?: string | number
     version?: number
     approved?: boolean
     reason?: string

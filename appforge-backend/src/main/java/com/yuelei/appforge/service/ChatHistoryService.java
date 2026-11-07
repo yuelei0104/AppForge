@@ -10,7 +10,7 @@ import com.yuelei.appforge.model.entity.User;
 import java.time.LocalDateTime;
 
 /**
- *  服务层。
+ * 服务层。
  *
  * @author yuelei
  */
@@ -22,5 +22,9 @@ public interface ChatHistoryService extends IService<ChatHistory> {
 
     QueryWrapper getQueryWrapper(ChatHistoryQueryRequest chatHistoryQueryRequest);
 
-    Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastCreateTime, User loginUser)
+    Page<ChatHistory> listAppChatHistoryByPage(
+            Long appId, int pageSize, LocalDateTime lastCreateTime, User loginUser);
+
+    Page<ChatHistory> listAppChatHistoryByPage(
+            Long appId, int pageSize, LocalDateTime lastCreateTime, Long lastId, User loginUser);
 }
