@@ -48,10 +48,16 @@ public class AppGenerationService {
     }
 
     public Flux<String> generate(App app, String message) {
-        return Flux.defer(() -> begin(app, message)).subscribeOn(Schedulers.boundedElastic());
+        return generate(app, message, () -> {});
     }
 
-    private Flux<String> begin(App app, String message) {
+    /** 在成功认领生成任务后记录用户消息，拒绝并发请求时不写入历史。 */
+    public Flux<String> generate(App app, String message, Runnable onStarted) {
+        return Flux.defer(() -> begin(app, message, onStarted))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private Flux<String> begin(App app, String message, Runnable onStarted) {
         long id = app.getId();
         workspace.ensureBaseline(id);
         Job job = new Job();
@@ -70,6 +76,7 @@ public class AppGenerationService {
             ThrowUtils.throwIf(changed != 1, ErrorCode.OPERATION_ERROR, "该应用正在生成，请刷新状态");
             // 先认领任务再读取上下文，阻止回退/发布与上下文读取之间发生竞争。
             request = context(workspace.requireApp(id), message);
+            onStarted.run();
         } catch (RuntimeException error) {
             jobs.remove(id, job);
             fail(id, job, error);

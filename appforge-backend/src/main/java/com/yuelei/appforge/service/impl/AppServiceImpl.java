@@ -8,7 +8,6 @@ import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.yuelei.appforge.constant.AppConstant;
-import com.yuelei.appforge.core.AiCodeGeneratorFacade;
 import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.exception.ErrorCode;
 import com.yuelei.appforge.exception.ThrowUtils;
@@ -31,6 +30,7 @@ import com.yuelei.appforge.workspace.*;
 import jakarta.annotation.Resource;
 
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 
 import reactor.core.publisher.Flux;
@@ -39,6 +39,7 @@ import java.io.Serializable;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -50,26 +51,17 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
-    @Resource
-    private AppWorkspaceService workspace;
+    @Resource private AppWorkspaceService workspace;
 
-    @Resource
-    private AppGenerationService generation;
+    @Resource private AppGenerationService generation;
 
-    @Resource
-    private AppCatalogSearch catalog;
+    @Resource private AppCatalogSearch catalog;
 
-    @Resource
-    private AppNameService names;
+    @Resource private AppNameService names;
 
-    @Resource
-    private UserService userService;
+    @Resource private UserService userService;
 
-    @Resource
-    private ChatHistoryService chatHistoryService;
-
-    @Resource
-    private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+    @Resource private ChatHistoryService chatHistoryService;
 
     @Override
     public long addApp(AppAddRequest appAddRequest, User loginUser) {
@@ -411,8 +403,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 !Objects.equals(app.getUserId(), loginUser.getId()),
                 ErrorCode.NO_AUTH_ERROR,
                 "无权操作该应用");
-
-
     }
 
     /** 校验应用名称长度 */
@@ -492,37 +482,67 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 "应用 ID 或消息无效，消息最多 2000 字");
         App app = getAppById(appId);
         AppPolicy.owner(app, loginUser);
-        // 4. 获取应用的代码生成类型
-        String codeGenTypeStr = app.getCodeGenType();
-        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
-        if (codeGenTypeEnum == null) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
-        }
-        // 5. 通过校验后，添加用户消息到对话历史
-        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
-        // 6. 调用 AI 生成代码（流式）
-        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 7. 收集AI响应内容并在完成后记录到对话历史
-        StringBuilder aiResponseBuilder = new StringBuilder();
-        return contentFlux
-            .map(chunk -> {
-                // 收集AI响应内容
-                aiResponseBuilder.append(chunk);
-                return chunk;
-            })
-            .doOnComplete(() -> {
-                // 流式响应完成后，添加AI消息到对话历史
-                String aiResponse = aiResponseBuilder.toString();
-                if (StrUtil.isNotBlank(aiResponse)) {
-                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-                }
-            })
-            .doOnError(error -> {
-                // 如果AI回复失败，也要记录错误消息
-                String errorMessage = "AI回复失败: " + error.getMessage();
-                chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-            });
-
+        return Flux.defer(
+                () -> {
+                    StringBuilder response = new StringBuilder();
+                    AtomicBoolean recorded = new AtomicBoolean();
+                    return generation
+                            .generate(
+                                    app,
+                                    message,
+                                    () -> {
+                                        ThrowUtils.throwIf(
+                                                !chatHistoryService.addChatMessage(
+                                                        appId,
+                                                        message,
+                                                        ChatHistoryMessageTypeEnum.USER.getValue(),
+                                                        loginUser.getId()),
+                                                ErrorCode.OPERATION_ERROR,
+                                                "保存用户消息失败");
+                                        recorded.set(true);
+                                    })
+                            .doOnNext(response::append)
+                            .doOnComplete(
+                                    () -> {
+                                        if (!response.isEmpty()) {
+                                            ThrowUtils.throwIf(
+                                                    !chatHistoryService.addChatMessage(
+                                                            appId,
+                                                            response.toString(),
+                                                            ChatHistoryMessageTypeEnum.AI
+                                                                    .getValue(),
+                                                            loginUser.getId()),
+                                                    ErrorCode.OPERATION_ERROR,
+                                                    "保存 AI 消息失败");
+                                        }
+                                    })
+                            .doOnError(
+                                    error -> {
+                                        if (recorded.get()) {
+                                            String text =
+                                                    error
+                                                                    instanceof
+                                                                    AppGenerationService
+                                                                            .GenerationStoppedException
+                                                            ? "生成已停止，未保存不完整代码"
+                                                            : "AI 回复失败："
+                                                                    + AppGenerationService
+                                                                            .safeError(error);
+                                            try {
+                                                chatHistoryService.addChatMessage(
+                                                        appId,
+                                                        text,
+                                                        ChatHistoryMessageTypeEnum.AI.getValue(),
+                                                        loginUser.getId());
+                                            } catch (RuntimeException persistenceError) {
+                                                log.error(
+                                                        "保存失败消息出错 appId={}",
+                                                        appId,
+                                                        persistenceError);
+                                            }
+                                        }
+                                    });
+                });
     }
 
     @Override
@@ -559,6 +579,4 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 删除应用
         return super.removeById(id);
     }
-
-
 }

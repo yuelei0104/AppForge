@@ -13,15 +13,18 @@ import com.yuelei.appforge.model.entity.ChatHistory;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.service.ChatHistoryService;
 import com.yuelei.appforge.service.UserService;
+
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.*;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- *  控制层。
+ * 控制层。
  *
  * @author yuelei
  */
@@ -29,11 +32,9 @@ import java.util.List;
 @RequestMapping("/chatHistory")
 public class ChatHistoryController {
 
-    @Autowired
-    private ChatHistoryService chatHistoryService;
+    @Autowired private ChatHistoryService chatHistoryService;
 
-    @Autowired
-    private UserService userService;
+    @Autowired private UserService userService;
 
     /**
      * 保存。
@@ -42,6 +43,7 @@ public class ChatHistoryController {
      * @return {@code true} 保存成功，{@code false} 保存失败
      */
     @PostMapping("save")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean save(@RequestBody ChatHistory chatHistory) {
         return chatHistoryService.save(chatHistory);
     }
@@ -53,6 +55,7 @@ public class ChatHistoryController {
      * @return {@code true} 删除成功，{@code false} 删除失败
      */
     @DeleteMapping("remove/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean remove(@PathVariable Long id) {
         return chatHistoryService.removeById(id);
     }
@@ -64,6 +67,7 @@ public class ChatHistoryController {
      * @return {@code true} 更新成功，{@code false} 更新失败
      */
     @PutMapping("update")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean update(@RequestBody ChatHistory chatHistory) {
         return chatHistoryService.updateById(chatHistory);
     }
@@ -74,6 +78,7 @@ public class ChatHistoryController {
      * @return 所有数据
      */
     @GetMapping("list")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public List<ChatHistory> list() {
         return chatHistoryService.list();
     }
@@ -85,6 +90,7 @@ public class ChatHistoryController {
      * @return 详情
      */
     @GetMapping("getInfo/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public ChatHistory getInfo(@PathVariable Long id) {
         return chatHistoryService.getById(id);
     }
@@ -96,6 +102,7 @@ public class ChatHistoryController {
      * @return 分页对象
      */
     @GetMapping("page")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public Page<ChatHistory> page(Page<ChatHistory> page) {
         return chatHistoryService.page(page);
     }
@@ -103,19 +110,24 @@ public class ChatHistoryController {
     /**
      * 分页查询某个应用的对话历史（游标查询）
      *
-     * @param appId          应用ID
-     * @param pageSize       页面大小
+     * @param appId 应用ID
+     * @param pageSize 页面大小
      * @param lastCreateTime 最后一条记录的创建时间
-     * @param request        请求
+     * @param request 请求
      * @return 对话历史分页
      */
     @GetMapping("/app/{appId}")
-    public BaseResponse<Page<ChatHistory>> listAppChatHistory(@PathVariable Long appId,
-                                                              @RequestParam(defaultValue = "10") int pageSize,
-                                                              @RequestParam(required = false) LocalDateTime lastCreateTime,
-                                                              HttpServletRequest request) {
+    public BaseResponse<Page<ChatHistory>> listAppChatHistory(
+            @PathVariable Long appId,
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+                    LocalDateTime lastCreateTime,
+            @RequestParam(required = false) Long lastId,
+            HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
-        Page<ChatHistory> result = chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreateTime, loginUser);
+        Page<ChatHistory> result =
+                chatHistoryService.listAppChatHistoryByPage(
+                        appId, pageSize, lastCreateTime, lastId, loginUser);
         return ResultUtils.success(result);
     }
 
@@ -127,14 +139,17 @@ public class ChatHistoryController {
      */
     @PostMapping("/admin/list/page/vo")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Page<ChatHistory>> listAllChatHistoryByPageForAdmin(@RequestBody ChatHistoryQueryRequest chatHistoryQueryRequest) {
+    public BaseResponse<Page<ChatHistory>> listAllChatHistoryByPageForAdmin(
+            @RequestBody ChatHistoryQueryRequest chatHistoryQueryRequest) {
         ThrowUtils.throwIf(chatHistoryQueryRequest == null, ErrorCode.PARAMS_ERROR);
         long pageNum = chatHistoryQueryRequest.getPageNum();
         long pageSize = chatHistoryQueryRequest.getPageSize();
+        ThrowUtils.throwIf(
+                pageNum < 1 || pageSize < 1 || pageSize > 50, ErrorCode.PARAMS_ERROR, "分页参数无效");
         // 查询数据
         QueryWrapper queryWrapper = chatHistoryService.getQueryWrapper(chatHistoryQueryRequest);
-        Page<ChatHistory> result = chatHistoryService.page(Page.of(pageNum, pageSize), queryWrapper);
+        Page<ChatHistory> result =
+                chatHistoryService.page(Page.of(pageNum, pageSize), queryWrapper);
         return ResultUtils.success(result);
     }
-
 }

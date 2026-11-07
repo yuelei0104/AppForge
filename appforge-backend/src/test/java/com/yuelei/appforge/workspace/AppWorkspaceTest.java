@@ -340,6 +340,82 @@ class AppWorkspaceTest {
         subscription.dispose();
     }
 
+    com.yuelei.appforge.service.impl.AppServiceImpl historyAppService(
+            AppGenerationService gen, List<String> history) {
+        var service =
+                new com.yuelei.appforge.service.impl.AppServiceImpl() {
+                    @Override
+                    public App getById(java.io.Serializable key) {
+                        return workspace.requireApp(Long.parseLong(key.toString()));
+                    }
+                };
+        ChatHistoryService recorder =
+                (ChatHistoryService)
+                        Proxy.newProxyInstance(
+                                getClass().getClassLoader(),
+                                new Class[] {ChatHistoryService.class},
+                                (p, m, args) -> {
+                                    if (m.getName().equals("addChatMessage")) {
+                                        history.add(args[2] + ":" + args[1]);
+                                        return true;
+                                    }
+                                    return null;
+                                });
+        ReflectionTestUtils.setField(service, "generation", gen);
+        ReflectionTestUtils.setField(service, "chatHistoryService", recorder);
+        return service;
+    }
+
+    @Test
+    void historyRecordingUsesWorkspaceGenerationAndSavesTheCompleteAiMessage() {
+        var history = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var gen = generation(Flux.just("```html\n<h1>", "博客</h1>\n```"));
+        var service = historyAppService(gen, history);
+        var flux = service.chatToGenCode(id, "创建博客", owner);
+        assertTrue(history.isEmpty());
+        flux.blockLast(Duration.ofSeconds(5));
+        assertEquals(List.of("user:创建博客", "ai:```html\n<h1>博客</h1>\n```"), history);
+        assertEquals(1, workspace.requireApp(id).getCurrentVersion());
+        assertEquals("SUCCEEDED", workspace.requireApp(id).getGenerationStatus());
+    }
+
+    @Test
+    void duplicateGenerationDoesNotRecordRejectedUserMessagesAndStopKeepsHistory()
+            throws Exception {
+        var history = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var gen = generation(Flux.never());
+        var service = historyAppService(gen, history);
+        var ended = new CountDownLatch(1);
+        var subscription =
+                service.chatToGenCode(id, "开始", owner).subscribe(x -> {}, e -> ended.countDown());
+        for (int i = 0; i < 100 && history.isEmpty(); i++) Thread.sleep(10);
+        assertEquals(List.of("user:开始"), history);
+        assertThrows(
+                RuntimeException.class,
+                () -> service.chatToGenCode(id, "重复", owner).blockLast(Duration.ofSeconds(3)));
+        assertEquals(List.of("user:开始"), history);
+        gen.stop(id, owner);
+        assertTrue(ended.await(5, TimeUnit.SECONDS));
+        assertEquals(List.of("user:开始", "ai:生成已停止，未保存不完整代码"), history);
+        assertEquals(0, workspace.requireApp(id).getCurrentVersion());
+        subscription.dispose();
+    }
+
+    @Test
+    void historyFailureMessageIsSanitizedAndDoesNotCreateAVersion() {
+        var history = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var service =
+                historyAppService(
+                        generation(Flux.error(new RuntimeException("provider internal secret"))),
+                        history);
+        assertThrows(
+                RuntimeException.class,
+                () -> service.chatToGenCode(id, "失败请求", owner).blockLast(Duration.ofSeconds(3)));
+        assertEquals(2, history.size());
+        assertFalse(history.getLast().contains("secret"));
+        assertEquals(0, workspace.requireApp(id).getCurrentVersion());
+    }
+
     @Test
     void restartMarksInterruptedJobsAsFailedAndAllowsRetry() {
         jdbc.update(

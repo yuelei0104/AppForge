@@ -53,7 +53,7 @@ function initForm(data: AppInfo) {
   form.priority = data.priority ?? 0
   form.description = data.description || ''
   form.tags = [...(data.tags || [])]
-  form.visibility = data.visibility || 'PRIVATE'
+  form.visibility = data.visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE'
 }
 
 async function loadApp() {
@@ -140,9 +140,7 @@ async function handleSave() {
       : await updateApp(body)
     if (res.data.code === 0) {
       message.success('保存成功')
-      await router.push(
-        isAdmin.value ? '/admin/appManage' : { path: `/app/chat/${appId}`, query: { view: '1' } },
-      )
+      await router.push(isAdmin.value ? '/admin/appManage' : { path: `/app/chat/${appId}` })
     } else {
       message.error(res.data.message || '保存失败')
     }
@@ -181,7 +179,7 @@ function handleReset() {
 }
 
 function enterChat() {
-  void router.push({ path: `/app/chat/${appId}`, query: { view: '1' } })
+  void router.push({ path: `/app/chat/${appId}` })
 }
 
 onMounted(() => {

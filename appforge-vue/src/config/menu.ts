@@ -28,6 +28,10 @@ export const menuItems: MenuItemConfig[] = [
     label: '应用管理',
   },
   {
+    key: '/admin/chatManage',
+    label: '对话管理',
+  },
+  {
     key: '/admin/userManage',
     label: '用户管理',
   },

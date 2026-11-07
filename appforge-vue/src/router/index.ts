@@ -6,6 +6,7 @@ import AppEditPage from '@/pages/app/AppEditPage.vue'
 import HomeView from '@/pages/HomeView.vue'
 import NoAuthPage from '@/pages/NoAuthPage.vue'
 import AppManagePage from '@/pages/admin/AppManagePage.vue'
+import ChatManagePage from '@/pages/admin/ChatManagePage.vue'
 import UserManagePage from '@/pages/admin/UserManagePage.vue'
 import UserLoginPage from '@/pages/user/UserLoginPage.vue'
 import UserRegisterPage from '@/pages/user/UserRegisterPage.vue'
@@ -13,6 +14,12 @@ import UserRegisterPage from '@/pages/user/UserRegisterPage.vue'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    {
+      path: '/admin/chatManage',
+      name: 'chatManage',
+      component: ChatManagePage,
+      meta: { access: ACCESS_ENUM.ADMIN },
+    },
     {
       path: '/',
       name: 'home',

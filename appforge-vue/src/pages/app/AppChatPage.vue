@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { listAppChatHistory } from '@/api/chatHistoryController'
+import { prependHistory, oldestCursor, type ChatMessage } from '@/utils/chatHistory'
 import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
 import { generationLabel } from '@/utils/appStatus'
 import VersionHistoryDrawer from '@/components/VersionHistoryDrawer.vue'
@@ -33,23 +35,23 @@ import { API_BASE_URL } from '@/config/env'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { getAppDeployUrlFromResponse, getAppPreviewUrl } from '@/utils/appUrls'
 
-interface ChatMessage {
-  id: string
-  role: 'user' | 'ai'
-  content: string
-  time: string
-  status?: 'streaming' | 'done' | 'error' | 'stopped'
-}
-
 const route = useRoute()
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
 const appId = computed(() => String(route.params.appId ?? ''))
-const isViewMode = computed(() => route.query.view === '1')
 const app = ref<AppInfo | null>(null)
 const appLoading = ref(true)
 const messages = ref<ChatMessage[]>([])
+const historyLoading = ref(false)
+const historyLoaded = ref(false)
+const historyError = ref('')
+const hasMoreHistory = ref(false)
+const hasAnyHistory = ref(false)
+let historyCursor: ReturnType<typeof oldestCursor>
+let historyAbort: AbortController | undefined
+let initialPromptSent = false
+let followLatest = true
 const input = ref('')
 const streaming = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
@@ -171,11 +173,97 @@ function formatTime() {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-async function scrollToBottom() {
+async function scrollToBottom(force = false) {
+  if (!force && (!followLatest || historyLoading.value)) return
+  const sequence = loadSequence
   await nextTick()
+  if (sequence !== loadSequence) return
   const container = messagesRef.value
   if (container) {
     container.scrollTop = container.scrollHeight
+  }
+}
+
+function handleMessagesScroll() {
+  const container = messagesRef.value
+  if (container && !historyLoading.value) {
+    followLatest = container.scrollHeight - container.scrollTop - container.clientHeight < 80
+  }
+}
+
+async function loadChatHistory(more = false, sequence = loadSequence) {
+  if (!canManage.value || historyLoading.value || (more && !historyCursor)) return false
+  const id = appId.value
+  historyLoading.value = true
+  historyError.value = ''
+  const controller = new AbortController()
+  historyAbort = controller
+  try {
+    const res = await listAppChatHistory(
+      {
+        appId: id,
+        pageSize: 10,
+        ...(more ? historyCursor : {}),
+      },
+      controller.signal,
+    )
+    if (sequence !== loadSequence) return false
+    if (res.data.code !== 0 || !res.data.data) {
+      throw new Error(res.data.message || '加载对话历史失败')
+    }
+    const records = res.data.data.records ?? []
+    const nextCursor = oldestCursor(records)
+    if (records.length && !nextCursor) throw new Error('历史消息缺少分页信息，请稍后重试')
+    // 在插入之前记录视口，避免加载期间的流式输出影响阅读位置。
+    const container = messagesRef.value
+    const previousHeight = container?.scrollHeight ?? 0
+    const previousTop = container?.scrollTop ?? 0
+    messages.value = prependHistory(more ? messages.value : [], records)
+    hasAnyHistory.value ||= records.length > 0
+    const loadedHistoryCount = messages.value.filter((item) =>
+      item.id.startsWith('history-'),
+    ).length
+    const total = res.data.data.totalRow
+    hasMoreHistory.value =
+      records.length === 10 && !!nextCursor && (total == null || loadedHistoryCount < total)
+    historyCursor = nextCursor
+    historyLoaded.value = true
+    await nextTick()
+    if (sequence !== loadSequence) return false
+    if (more && container) {
+      container.scrollTop = previousTop + container.scrollHeight - previousHeight
+      followLatest = false
+    } else {
+      followLatest = true
+      await scrollToBottom(true)
+    }
+    return true
+  } catch (error) {
+    if (sequence !== loadSequence || controller.signal.aborted) return false
+    historyError.value = error instanceof Error ? error.message : '加载对话历史失败，请重试'
+    return false
+  } finally {
+    if (sequence === loadSequence) historyLoading.value = false
+  }
+}
+
+async function initializeHistory(sequence = loadSequence) {
+  const loaded = await loadChatHistory(false, sequence)
+  if (!loaded || sequence !== loadSequence) return
+  if (messages.value.length >= 2 || (app.value?.currentVersion ?? 0) > 0) {
+    previewUrl.value = getAppPreviewUrl(appId.value)
+    previewVisible.value = true
+    previewKey.value += 1
+  }
+  if (
+    isOwner.value &&
+    !hasAnyHistory.value &&
+    !initialPromptSent &&
+    app.value?.initPrompt &&
+    !isGenerating.value
+  ) {
+    initialPromptSent = true
+    sendMessage(app.value.initPrompt)
   }
 }
 
@@ -288,7 +376,7 @@ function sendMessage(rawMessage: string) {
     message.warning('请输入消息内容')
     return
   }
-  if (deployLoading.value || deleting.value) {
+  if (!historyLoaded.value || historyLoading.value || deployLoading.value || deleting.value) {
     return
   }
   if (isGenerating.value) {
@@ -319,7 +407,8 @@ function sendMessage(rawMessage: string) {
   input.value = ''
   streaming.value = true
   previewLoading.value = true
-  void scrollToBottom()
+  followLatest = true
+  void scrollToBottom(true)
 
   openEventSource(content, aiMessage)
 }
@@ -337,6 +426,21 @@ function handleComposerKeydown(event: KeyboardEvent) {
 
 async function loadApp() {
   const sequence = ++loadSequence
+  historyAbort?.abort()
+  historyLoading.value = false
+  historyLoaded.value = false
+  historyError.value = ''
+  hasMoreHistory.value = false
+  hasAnyHistory.value = false
+  historyCursor = undefined
+  initialPromptSent = false
+  followLatest = true
+  // 兼容旧收藏地址，浏览行为改由真实历史判断。
+  if ('view' in route.query) {
+    const query = { ...route.query }
+    delete query.view
+    void router.replace({ path: route.path, query })
+  }
   clearTimeout(statusTimer)
   historyOpen.value = false
   activeMessage = null
@@ -367,20 +471,13 @@ async function loadApp() {
     }
     if (res.data.code === 0 && res.data.data) {
       app.value = res.data.data
-      if (
-        isViewMode.value ||
-        !isOwner.value ||
-        (app.value.generationStatus && app.value.generationStatus !== 'IDLE') ||
-        (app.value.currentVersion || 0) > 0
-      ) {
+      if ((app.value.currentVersion || 0) > 0 || app.value.generationStatus === 'SUCCEEDED') {
         previewUrl.value = getAppPreviewUrl(appId.value)
         previewVisible.value = true
         previewKey.value += 1
-      } else if (res.data.data.initPrompt) {
-        sendMessage(res.data.data.initPrompt)
-        // 首次创建自动生成后也切换为浏览地址，刷新不会重复调用模型。
-        void router.replace({ path: route.path, query: { ...route.query, view: '1' } })
       }
+      // 他人的应用只展示网站，不请求只有创建者/管理员可读的历史。
+      if (canManage.value) await initializeHistory(sequence)
     } else if (res.data.code === 40101) {
       message.error('无权访问该应用')
       await router.replace('/noAuth')
@@ -509,6 +606,7 @@ watch(
 watch(isGenerating, scheduleStatus)
 
 onBeforeUnmount(() => {
+  historyAbort?.abort()
   clearTimeout(statusTimer)
   loadSequence += 1
   closeStream()
@@ -585,11 +683,40 @@ onBeforeUnmount(() => {
     />
     <div class="app-chat-page__body">
       <section class="chat-panel">
-        <div ref="messagesRef" class="chat-panel__messages">
-          <a-spin v-if="appLoading" class="chat-panel__loading" />
+        <div ref="messagesRef" class="chat-panel__messages" @scroll="handleMessagesScroll">
+          <div v-if="hasMoreHistory && historyLoaded" class="chat-panel__history">
+            <a-button
+              type="link"
+              size="small"
+              :loading="historyLoading"
+              @click="loadChatHistory(true)"
+              >加载更多历史消息</a-button
+            >
+          </div>
+          <a-alert
+            v-if="historyError"
+            type="warning"
+            show-icon
+            :message="historyError"
+            class="chat-panel__history-error"
+          >
+            <template #action>
+              <a-button
+                size="small"
+                :loading="historyLoading"
+                @click="historyLoaded ? loadChatHistory(true) : initializeHistory()"
+                >重试</a-button
+              >
+            </template>
+          </a-alert>
+          <a-spin
+            v-if="appLoading || (historyLoading && !historyLoaded)"
+            class="chat-panel__loading"
+          />
           <div v-else-if="!messages.length" class="chat-panel__empty">
             <img :src="aiAvatarUrl" class="chat-panel__empty-avatar" alt="AI 助手" />
-            <p v-if="isViewMode">正在浏览应用，暂未保存历史对话。</p>
+            <p v-if="!canManage">对话历史仅创建者和管理员可见。</p>
+            <p v-else-if="historyError">暂时无法加载历史，请重试后继续对话。</p>
             <p v-else>描述你的想法，AI 会帮你生成一个完整的网站应用。</p>
           </div>
 
@@ -601,11 +728,15 @@ onBeforeUnmount(() => {
           >
             <a-avatar
               v-if="item.role === 'user'"
-              :src="loginUserStore.loginUser.userAvatar || undefined"
+              :src="
+                app?.user?.userAvatar || (isOwner ? loginUserStore.loginUser.userAvatar : undefined)
+              "
               :size="32"
               class="chat-message__avatar"
             >
-              <template v-if="!loginUserStore.loginUser.userAvatar">
+              <template
+                v-if="!app?.user?.userAvatar && !(isOwner && loginUserStore.loginUser.userAvatar)"
+              >
                 <UserOutlined />
               </template>
             </a-avatar>
@@ -626,7 +757,13 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div class="chat-message__meta">
-                <span>{{ item.role === 'user' ? '我' : 'AI 助手' }}</span>
+                <span>{{
+                  item.role === 'user'
+                    ? isOwner
+                      ? '我'
+                      : app?.user?.userName || '创建者'
+                    : 'AI 助手'
+                }}</span>
                 <span>{{ item.time }}</span>
                 <span v-if="item.status === 'stopped'">已停止 · 未保存</span>
                 <span v-if="item.status === 'error'">本次未保存</span>
@@ -642,7 +779,15 @@ onBeforeUnmount(() => {
                 v-model:value="input"
                 :auto-size="{ minRows: 2, maxRows: 6 }"
                 :maxlength="2000"
-                :disabled="isGenerating || deployLoading || deleting || appLoading || !isOwner"
+                :disabled="
+                  isGenerating ||
+                  deployLoading ||
+                  deleting ||
+                  appLoading ||
+                  !historyLoaded ||
+                  historyLoading ||
+                  !isOwner
+                "
                 :placeholder="readOnlyHint || '请描述你想生成的网站，越详细效果越好哦'"
                 @keydown="handleComposerKeydown"
               />
@@ -659,7 +804,14 @@ onBeforeUnmount(() => {
               v-else
               type="primary"
               :disabled="
-                !input.trim() || isGenerating || deployLoading || deleting || appLoading || !isOwner
+                !input.trim() ||
+                isGenerating ||
+                deployLoading ||
+                deleting ||
+                appLoading ||
+                !historyLoaded ||
+                historyLoading ||
+                !isOwner
               "
               :loading="streaming"
               @click="handleSend"
@@ -733,6 +885,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.chat-panel__history {
+  text-align: center;
+  padding: 0 0 12px;
+}
+.chat-panel__history-error {
+  margin-bottom: 12px;
+}
+
 .app-chat-page {
   display: flex;
   flex-direction: column;
