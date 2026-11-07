@@ -4,17 +4,23 @@ declare namespace API {
     cover?: string
     initPrompt?: string
     codeGenType?: string
+    description?: string
+    tags?: string[]
+    visibility?: string
   }
 
   type AppAdminUpdateRequest = {
-    id?: string | number
+    id?: number
     appName?: string
     cover?: string
     priority?: number
+    description?: string
+    tags?: string[]
+    visibility?: string
   }
 
   type AppDeployRequest = {
-    appId?: string | number
+    appId?: number
   }
 
   type AppQueryRequest = {
@@ -22,24 +28,50 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: string | number
+    id?: number
     appName?: string
     cover?: string
     initPrompt?: string
     codeGenType?: string
     deployKey?: string
     priority?: number
-    userId?: string | number
+    userId?: number
+    searchText?: string
+    tag?: string
+    visibility?: string
+    featureStatus?: string
+    generationStatus?: string
   }
 
   type AppUpdateRequest = {
-    id?: string | number
+    id?: number
     appName?: string
     cover?: string
+    description?: string
+    tags?: string[]
+    visibility?: string
+  }
+
+  type AppVersionVO = {
+    version?: number
+    kind?: string
+    sourceVersion?: number
+    summary?: string
+    createTime?: string
   }
 
   type AppVO = {
-    id?: string | number
+    description?: string
+    tags?: string[]
+    visibility?: string
+    generationStatus?: string
+    generationError?: string
+    currentVersion?: number
+    deployedVersion?: number
+    deploymentStatus?: string
+    featureStatus?: string
+    featureReason?: string
+    id?: number
     appName?: string
     cover?: string
     initPrompt?: string
@@ -47,7 +79,7 @@ declare namespace API {
     deployKey?: string
     deployedTime?: string
     priority?: number
-    userId?: string | number
+    userId?: number
     createTime?: string
     updateTime?: string
     user?: UserVO
@@ -65,6 +97,18 @@ declare namespace API {
     message?: string
   }
 
+  type BaseResponseInteger = {
+    code?: number
+    data?: number
+    message?: string
+  }
+
+  type BaseResponseListAppVersionVO = {
+    code?: number
+    data?: AppVersionVO[]
+    message?: string
+  }
+
   type BaseResponseLoginUserVO = {
     code?: number
     data?: LoginUserVO
@@ -73,7 +117,13 @@ declare namespace API {
 
   type BaseResponseLong = {
     code?: number
-    data?: string | number
+    data?: number
+    message?: string
+  }
+
+  type BaseResponseMapStringString = {
+    code?: number
+    data?: Record<string, any>
     message?: string
   }
 
@@ -108,20 +158,25 @@ declare namespace API {
   }
 
   type chatToGenCodeParams = {
-    appId: string | number
+    appId: number
     message: string
   }
 
   type DeleteRequest = {
-    id?: string | number
+    id?: number
+  }
+
+  type filesParams = {
+    appId: number
+    version: number
   }
 
   type getAppVOByIdByAdminParams = {
-    id: string | number
+    id: number
   }
 
   type getAppVOByIdParams = {
-    id: string | number
+    id: number
   }
 
   type getDeployIndex1Params = {
@@ -138,28 +193,28 @@ declare namespace API {
   }
 
   type getPreviewIndex1Params = {
-    appId: string | number
+    appId: number
   }
 
   type getPreviewIndexParams = {
-    appId: string | number
+    appId: number
   }
 
   type getPreviewResourceParams = {
-    appId: string | number
+    appId: number
     fileName: string
   }
 
   type getUserByIdParams = {
-    id: string | number
+    id: number
   }
 
   type getUserVOByIdParams = {
-    id: string | number
+    id: number
   }
 
   type LoginUserVO = {
-    id?: string | number
+    id?: number
     userAccount?: string
     userName?: string
     userAvatar?: string
@@ -187,10 +242,12 @@ declare namespace API {
     optimizeCountQuery?: boolean
   }
 
-  type ServerSentEventString = true
+  type SseEmitter = {
+    timeout?: number
+  }
 
   type User = {
-    id?: string | number
+    id?: number
     userAccount?: string
     userPassword?: string
     userName?: string
@@ -221,7 +278,7 @@ declare namespace API {
     pageSize?: number
     sortField?: string
     sortOrder?: string
-    id?: string | number
+    id?: number
     userName?: string
     userAccount?: string
     userProfile?: string
@@ -235,7 +292,7 @@ declare namespace API {
   }
 
   type UserUpdateRequest = {
-    id?: string | number
+    id?: number
     userName?: string
     userAvatar?: string
     userProfile?: string
@@ -243,7 +300,7 @@ declare namespace API {
   }
 
   type UserVO = {
-    id?: string | number
+    id?: number
     userAccount?: string
     userName?: string
     userAvatar?: string
@@ -251,6 +308,15 @@ declare namespace API {
     userRole?: string
     createTime?: string
   }
+
+  type versionsParams = {
+    appId: number
+  }
+
+  type WorkspaceRequest = {
+    appId?: number
+    version?: number
+    approved?: boolean
+    reason?: string
+  }
 }
-
-

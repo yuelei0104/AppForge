@@ -8,6 +8,7 @@ import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.yuelei.appforge.constant.AppConstant;
+import com.yuelei.appforge.core.AiCodeGeneratorFacade;
 import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.exception.ErrorCode;
 import com.yuelei.appforge.exception.ThrowUtils;
@@ -18,19 +19,23 @@ import com.yuelei.appforge.model.dto.app.AppQueryRequest;
 import com.yuelei.appforge.model.dto.app.AppUpdateRequest;
 import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.User;
+import com.yuelei.appforge.model.enums.ChatHistoryMessageTypeEnum;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.model.vo.AppVO;
 import com.yuelei.appforge.model.vo.UserVO;
 import com.yuelei.appforge.service.AppService;
+import com.yuelei.appforge.service.ChatHistoryService;
 import com.yuelei.appforge.service.UserService;
 import com.yuelei.appforge.workspace.*;
 
 import jakarta.annotation.Resource;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import reactor.core.publisher.Flux;
 
+import java.io.Serializable;
 import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -42,14 +47,29 @@ import java.util.stream.Collectors;
  * @author yuelei
  */
 @Service
+@Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
-    @Resource private AppWorkspaceService workspace;
-    @Resource private AppGenerationService generation;
-    @Resource private AppCatalogSearch catalog;
-    @Resource private AppNameService names;
+    @Resource
+    private AppWorkspaceService workspace;
 
-    @Resource private UserService userService;
+    @Resource
+    private AppGenerationService generation;
+
+    @Resource
+    private AppCatalogSearch catalog;
+
+    @Resource
+    private AppNameService names;
+
+    @Resource
+    private UserService userService;
+
+    @Resource
+    private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private AiCodeGeneratorFacade aiCodeGeneratorFacade;
 
     @Override
     public long addApp(AppAddRequest appAddRequest, User loginUser) {
@@ -391,6 +411,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 !Objects.equals(app.getUserId(), loginUser.getId()),
                 ErrorCode.NO_AUTH_ERROR,
                 "无权操作该应用");
+
+
     }
 
     /** 校验应用名称长度 */
@@ -470,7 +492,37 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 "应用 ID 或消息无效，消息最多 2000 字");
         App app = getAppById(appId);
         AppPolicy.owner(app, loginUser);
-        return generation.generate(app, message);
+        // 4. 获取应用的代码生成类型
+        String codeGenTypeStr = app.getCodeGenType();
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
+        if (codeGenTypeEnum == null) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型");
+        }
+        // 5. 通过校验后，添加用户消息到对话历史
+        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
+        // 6. 调用 AI 生成代码（流式）
+        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 7. 收集AI响应内容并在完成后记录到对话历史
+        StringBuilder aiResponseBuilder = new StringBuilder();
+        return contentFlux
+            .map(chunk -> {
+                // 收集AI响应内容
+                aiResponseBuilder.append(chunk);
+                return chunk;
+            })
+            .doOnComplete(() -> {
+                // 流式响应完成后，添加AI消息到对话历史
+                String aiResponse = aiResponseBuilder.toString();
+                if (StrUtil.isNotBlank(aiResponse)) {
+                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                }
+            })
+            .doOnError(error -> {
+                // 如果AI回复失败，也要记录错误消息
+                String errorMessage = "AI回复失败: " + error.getMessage();
+                chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+            });
+
     }
 
     @Override
@@ -480,4 +532,33 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         AppPolicy.owner(app, loginUser);
         return workspace.deploy(appId, loginUser);
     }
+
+    /**
+     * 删除应用时关联删除对话历史
+     *
+     * @param id 应用ID
+     * @return 是否成功
+     */
+    @Override
+    public boolean removeById(Serializable id) {
+        if (id == null) {
+            return false;
+        }
+        // 转换为 Long 类型
+        Long appId = Long.valueOf(id.toString());
+        if (appId <= 0) {
+            return false;
+        }
+        // 先删除关联的对话历史
+        try {
+            chatHistoryService.deleteByAppId(appId);
+        } catch (Exception e) {
+            // 记录日志但不阻止应用删除
+            log.error("删除应用关联对话历史失败: {}", e.getMessage());
+        }
+        // 删除应用
+        return super.removeById(id);
+    }
+
+
 }

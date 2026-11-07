@@ -15,7 +15,7 @@ import java.util.Map;
 public class MyBatisCodeGenerator {
 
     // 只生成 user 表对应的代码
-    private static final String[] TABLE_NAMES = {"user"};
+    private static final String[] TABLE_NAMES = {"chat_history"};
 
     public static void main(String[] args) {
         // 读取 application.yml 中的数据源配置

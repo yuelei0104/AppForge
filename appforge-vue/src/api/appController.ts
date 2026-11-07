@@ -1,3 +1,4 @@
+// @ts-ignore
 /* eslint-disable */
 import request from '@/request'
 
@@ -76,7 +77,7 @@ export async function chatToGenCode(
   params: API.chatToGenCodeParams,
   options?: { [key: string]: any }
 ) {
-  return request<API.ServerSentEventString[]>('/app/chat/gen/code', {
+  return request<API.SseEmitter>('/app/chat/gen/code', {
     method: 'GET',
     params: {
       ...params,
@@ -145,6 +146,21 @@ export async function listMyAppVoByPage(
   options?: { [key: string]: any }
 ) {
   return request<API.BaseResponsePageAppVO>('/app/my/list/page/vo', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}
+
+/** 此处后端没有提供注释 POST /app/public/list/page/vo */
+export async function listPublicAppVoByPage(
+  body: API.AppQueryRequest,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponsePageAppVO>('/app/public/list/page/vo', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

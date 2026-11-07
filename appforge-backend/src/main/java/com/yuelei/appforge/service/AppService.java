@@ -13,6 +13,7 @@ import com.yuelei.appforge.model.vo.AppVO;
 
 import reactor.core.publisher.Flux;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -143,4 +144,6 @@ public interface AppService extends IService<App> {
      * @return 部署标识
      */
     String deployApp(Long appId, User loginUser);
+
+    boolean removeById(Serializable id);
 }
