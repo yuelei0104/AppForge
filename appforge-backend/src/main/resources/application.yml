@@ -14,16 +14,26 @@ spring:
   # redis
   data:
     redis:
-      host: localhost
+      host: 127.0.0.1
       port: 6379
       password: 123456
       ttl: 3600
+  # session 配置
+  session:
+    store-type: redis
+    # session 30 天过期
+    timeout: 2592000
 
 
 server:
   port: 8123
   servlet:
     context-path: /api
+    # cookie 30 天过期
+    session:
+      cookie:
+        max-age: 2592000
+
 
 # springdoc-openapi
 springdoc:
@@ -62,3 +72,6 @@ langchain4j:
 logging:
   level:
     dev.langchain4j: DEBUG
+
+
+
