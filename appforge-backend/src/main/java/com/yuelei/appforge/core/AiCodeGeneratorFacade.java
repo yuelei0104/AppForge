@@ -1,6 +1,7 @@
 package com.yuelei.appforge.core;
 
 import com.yuelei.appforge.ai.AiCodeGeneratorService;
+import com.yuelei.appforge.ai.AiCodeGeneratorServiceFactory;
 import com.yuelei.appforge.core.parser.CodeParserExecutor;
 import com.yuelei.appforge.core.saver.CodeFileSaverExecutor;
 import com.yuelei.appforge.exception.*;
@@ -11,7 +12,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.ChatMemory;
-import dev.langchain4j.memory.chat.ChatMemoryProvider;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 
 import jakarta.annotation.Resource;
 
@@ -28,9 +29,8 @@ import java.util.List;
 @Service
 @Slf4j
 public class AiCodeGeneratorFacade {
-    @Resource private AiCodeGeneratorService aiCodeGeneratorService;
     @Resource private CancellableCodeStream cancellableCodeStream;
-    @Resource private ChatMemoryProvider chatMemoryProvider;
+    @Resource private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     public Flux<String> generateCodeStream(String message, CodeGenTypeEnum type) {
         return generateCodeStream(message, message, type, 0L);
@@ -41,12 +41,12 @@ public class AiCodeGeneratorFacade {
     }
 
     /**
-     * 生成代码流，并在生成成功后把本轮对话写入该应用的 Redis 记忆。
+     * 生成代码流，并复用该应用在工厂中缓存的对话记忆。
      *
      * @param request       实际发给模型的请求（可能包含当前代码上下文）
      * @param memoryMessage 写入对话记忆的原始用户消息
      * @param type          生成类型
-     * @param appId         应用 id，同时作为记忆 id
+     * @param appId         应用 id
      * @return 代码流
      */
     public Flux<String> generateCodeStream(
@@ -54,11 +54,12 @@ public class AiCodeGeneratorFacade {
         if (type == null)
             return Flux.error(new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码类型"));
 
-        ChatMemory memory = null;
+        MessageWindowChatMemory memory = null;
         String prompt = request;
         if (appId != null && appId > 0) {
             try {
-                memory = chatMemoryProvider.get(appId);
+                // 通过工厂获取实例，触发 Caffeine 缓存和数据库历史加载。
+                memory = aiCodeGeneratorServiceFactory.getChatMemory(appId);
                 prompt = withHistory(memory, request);
             } catch (RuntimeException error) {
                 // Redis 不可用时仍允许生成，只是本次不带历史上下文。
@@ -67,7 +68,7 @@ public class AiCodeGeneratorFacade {
             }
         }
 
-        final ChatMemory memoryRef = memory;
+        final MessageWindowChatMemory memoryRef = memory;
         final StringBuilder output = new StringBuilder();
         return cancellableCodeStream
                 .stream(prompt, type)
@@ -82,11 +83,13 @@ public class AiCodeGeneratorFacade {
 
     public File generateAndSaveCode(String message, CodeGenTypeEnum type, Long appId) {
         ThrowUtils.throwIf(type == null, ErrorCode.PARAMS_ERROR, "不支持的代码类型");
-        long memoryId = appId == null ? 0L : appId;
+        long id = appId == null ? 0L : appId;
+        AiCodeGeneratorService service =
+                aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(id);
         Object result =
                 type == CodeGenTypeEnum.HTML
-                        ? aiCodeGeneratorService.generateHtmlCode(memoryId, message)
-                        : aiCodeGeneratorService.generateMultiFileCode(memoryId, message);
+                        ? service.generateHtmlCode(message)
+                        : service.generateMultiFileCode(message);
         return CodeFileSaverExecutor.executeSaver(result, type, appId);
     }
 

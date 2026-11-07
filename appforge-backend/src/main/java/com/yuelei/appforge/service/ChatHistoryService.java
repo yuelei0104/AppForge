@@ -6,6 +6,7 @@ import com.mybatisflex.core.service.IService;
 import com.yuelei.appforge.model.dto.chathistory.ChatHistoryQueryRequest;
 import com.yuelei.appforge.model.entity.ChatHistory;
 import com.yuelei.appforge.model.entity.User;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 
 import java.time.LocalDateTime;
 
@@ -27,4 +28,6 @@ public interface ChatHistoryService extends IService<ChatHistory> {
 
     Page<ChatHistory> listAppChatHistoryByPage(
             Long appId, int pageSize, LocalDateTime lastCreateTime, Long lastId, User loginUser);
+
+    int loadChatHistoryToMemory(Long appId, MessageWindowChatMemory chatMemory, int maxCount);
 }

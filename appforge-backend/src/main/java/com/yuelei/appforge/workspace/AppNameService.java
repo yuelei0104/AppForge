@@ -30,7 +30,7 @@ public class AppNameService {
     }
 
     public void suggest(long id, String prompt, String original) {
-        Mono.fromCallable(() -> ai.generateAppName(-id, prompt))
+        Mono.fromCallable(() -> ai.generateAppName(prompt))
                 .subscribeOn(Schedulers.boundedElastic())
                 .timeout(Duration.ofSeconds(8))
                 .subscribe(

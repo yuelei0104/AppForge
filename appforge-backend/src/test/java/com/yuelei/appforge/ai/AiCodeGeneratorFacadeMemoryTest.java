@@ -3,15 +3,16 @@ package com.yuelei.appforge.ai;
 import com.yuelei.appforge.core.AiCodeGeneratorFacade;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.workspace.CancellableCodeStream;
+
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.memory.ChatMemory;
-import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import reactor.core.publisher.Flux;
 
 import static org.mockito.ArgumentMatchers.anyString;
@@ -25,14 +26,16 @@ class AiCodeGeneratorFacadeMemoryTest {
 
     @Test
     void remembersConversationPerApp() {
-        ChatMemory memory = MessageWindowChatMemory.withMaxMessages(20);
-        ChatMemoryProvider provider = memoryId -> memory;
+        MessageWindowChatMemory memory = MessageWindowChatMemory.withMaxMessages(20);
+        AiCodeGeneratorServiceFactory factory = mock(AiCodeGeneratorServiceFactory.class);
+        when(factory.getChatMemory(1L)).thenReturn(memory);
+
         CancellableCodeStream stream = mock(CancellableCodeStream.class);
         when(stream.stream(anyString(), eq(CodeGenTypeEnum.MULTI_FILE)))
                 .thenReturn(Flux.just("AI 回复"));
 
         AiCodeGeneratorFacade facade = new AiCodeGeneratorFacade();
-        ReflectionTestUtils.setField(facade, "chatMemoryProvider", provider);
+        ReflectionTestUtils.setField(facade, "aiCodeGeneratorServiceFactory", factory);
         ReflectionTestUtils.setField(facade, "cancellableCodeStream", stream);
 
         facade.generateCodeStream("当前请求一", "用户原话一", CodeGenTypeEnum.MULTI_FILE, 1L)
