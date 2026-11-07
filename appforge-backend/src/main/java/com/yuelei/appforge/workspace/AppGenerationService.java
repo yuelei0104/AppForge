@@ -86,7 +86,9 @@ public class AppGenerationService {
                         () ->
                                 generator.generateCodeStream(
                                         request,
-                                        CodeGenTypeEnum.getEnumByValue(app.getCodeGenType())))
+                                        message,
+                                        CodeGenTypeEnum.getEnumByValue(app.getCodeGenType()),
+                                        id))
                 .timeout(Duration.ofSeconds(120))
                 .doOnNext(
                         chunk -> {

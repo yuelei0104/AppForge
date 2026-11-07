@@ -1,6 +1,9 @@
 spring:
   application:
     name: appforge-backend
+  # 只使用 Redis 作为对话记忆存储，项目没有使用 Redis Embedding Store
+  autoconfigure:
+    exclude: dev.langchain4j.community.store.embedding.redis.spring.RedisEmbeddingStoreAutoConfiguration
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/appforge
@@ -8,6 +11,14 @@ spring:
     password: 123456
   profiles:
     active: local
+  # redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: 123456
+      ttl: 3600
+
 
 server:
   port: 8123

@@ -274,7 +274,11 @@ class AppWorkspaceTest {
         AiCodeGeneratorFacade facade =
                 new AiCodeGeneratorFacade() {
                     @Override
-                    public Flux<String> generateCodeStream(String text, CodeGenTypeEnum type) {
+                    public Flux<String> generateCodeStream(
+                            String request,
+                            String memoryMessage,
+                            CodeGenTypeEnum type,
+                            Long appId) {
                         return source;
                     }
                 };
