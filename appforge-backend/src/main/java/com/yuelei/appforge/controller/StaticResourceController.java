@@ -4,6 +4,7 @@ import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.model.entity.*;
 import com.yuelei.appforge.service.UserService;
 import com.yuelei.appforge.workspace.*;
+import com.yuelei.appforge.workspace.vue.VueProjectFiles;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -57,6 +58,20 @@ public class StaticResourceController {
         }
     }
 
+    @GetMapping("/static/{appId}/assets/{asset:.+}")
+    public ResponseEntity<Resource> previewAsset(
+            @PathVariable long appId, @PathVariable String asset, HttpServletRequest request) {
+        return getPreviewResource(appId, "assets/" + asset, request);
+    }
+
+    @GetMapping("/deploy/{deployKey}/assets/{asset:.+}")
+    public ResponseEntity<Resource> deployAsset(
+            @PathVariable String deployKey,
+            @PathVariable String asset,
+            HttpServletRequest request) {
+        return getDeployResource(deployKey, "assets/" + asset, request);
+    }
+
     private User viewer(HttpServletRequest request) {
         try {
             return userService.getLoginUser(request);
@@ -67,10 +82,21 @@ public class StaticResourceController {
 
     private ResponseEntity<Resource> file(
             java.util.Map<String, String> files, String name, boolean privatePage) {
+        boolean project = VueProjectFiles.isProject(files);
+        if (project) {
+            if (!VueProjectFiles.runtimePath("dist/" + name))
+                return ResponseEntity.notFound().build();
+            java.util.Map<String, String> runtime = new java.util.LinkedHashMap<>();
+            files.forEach(
+                    (path, value) -> {
+                        if (path.startsWith("dist/")) runtime.put(path.substring(5), value);
+                    });
+            files = runtime;
+        }
         String content = files.get(name);
-        if (privatePage && "index.html".equals(name) && content != null)
+        if ((privatePage || project) && "index.html".equals(name) && content != null)
             content = AppPageRenderer.inlinePrivateAssets(files);
-        if (!AppFileStore.FILES.contains(name) || content == null)
+        if ((!project && !AppFileStore.FILES.contains(name)) || content == null)
             return ResponseEntity.notFound().build();
         return ResponseEntity.ok()
                 .contentType(

@@ -136,6 +136,15 @@ public interface AppService extends IService<App> {
 
     Flux<String> chatToGenCode(Long appId, String message, User loginUser);
 
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress) {
+        return chatToGenCode(appId, message, user);
+    }
+
     /**
      * 部署应用
      *
@@ -147,3 +156,4 @@ public interface AppService extends IService<App> {
 
     boolean removeById(Serializable id);
 }
+

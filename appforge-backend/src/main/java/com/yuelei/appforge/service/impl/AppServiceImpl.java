@@ -477,6 +477,16 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
+        return chatToGenCode(appId, message, loginUser, event -> {});
+    }
+
+    @Override
+    public Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User loginUser,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress) {
         ThrowUtils.throwIf(
                 appId == null || appId <= 0 || StrUtil.isBlank(message) || message.length() > 2000,
                 ErrorCode.PARAMS_ERROR,
@@ -501,7 +511,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                                                         loginUser.getId()));
                                         recorded.set(true);
                                     },
-                                    userMessageId::get)
+                                    userMessageId::get,
+                                    progress)
                             .doOnNext(response::append)
                             .doOnComplete(
                                     () -> {
@@ -583,4 +594,5 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return super.removeById(id);
     }
 }
+
 

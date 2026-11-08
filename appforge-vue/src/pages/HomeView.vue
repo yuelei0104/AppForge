@@ -35,6 +35,7 @@ const quickPrompts = [
 ]
 
 const prompt = ref('')
+const generationMode = ref('vue_project')
 const creating = ref(false)
 
 const myApps = ref<AppInfo[]>([])
@@ -77,7 +78,7 @@ async function handleCreate() {
   }
   creating.value = true
   try {
-    const res = await addApp({ initPrompt })
+    const res = await addApp({ initPrompt, codeGenType: generationMode.value })
     if (res.data.code === 0 && res.data.data != null) {
       message.success('应用创建成功，正在为你生成')
       await router.push(`/app/chat/${String(res.data.data)}`)
@@ -210,7 +211,19 @@ onMounted(() => {
             @keydown="handlePromptKeydown"
           />
           <div class="prompt-panel__footer">
-            <span class="prompt-panel__hint">描述越具体，生成效果越好</span>
+            <div class="prompt-panel__mode">
+              <a-select
+                v-model:value="generationMode"
+                aria-label="生成模式"
+                :disabled="creating"
+                :options="[
+                  { value: 'vue_project', label: '完整网站工程' },
+                  { value: 'multi_file', label: '轻量网站' },
+                  { value: 'html', label: '单页网站' },
+                ]"
+              />
+              <span class="prompt-panel__hint">描述越具体，生成效果越好</span>
+            </div>
             <a-button
               type="primary"
               shape="circle"
@@ -356,6 +369,15 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.prompt-panel__mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.prompt-panel__mode .ant-select {
+  min-width: 146px;
+}
 .home-view {
   min-height: calc(100vh - 64px);
   padding-bottom: 32px;

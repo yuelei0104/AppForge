@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AppController {
     @Resource private AppService appService;
     @Resource private UserService userService;
+    @Resource private AppWorkspaceService workspace;
 
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest body, HttpServletRequest request) {
@@ -101,6 +102,40 @@ public class AppController {
         return ResultUtils.success(appService.adminGetAppVOById(id));
     }
 
+    @GetMapping("/source/download")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource>
+            downloadSource(@RequestParam long appId, HttpServletRequest request)
+                    throws java.io.IOException {
+        var app = workspace.requireApp(appId);
+        AppPolicy.manage(app, userService.getLoginUser(request));
+        ThrowUtils.throwIf(
+                !"vue_project".equals(app.getCodeGenType())
+                        || app.getCurrentVersion() == null
+                        || app.getCurrentVersion() < 1,
+                ErrorCode.OPERATION_ERROR,
+                "暂无可下载的工程");
+        var files =
+                workspace.versionFiles(
+                        appId, app.getCurrentVersion(), userService.getLoginUser(request));
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var zip =
+                new java.util.zip.ZipOutputStream(bytes, java.nio.charset.StandardCharsets.UTF_8)) {
+            for (var entry : files.entrySet()) {
+                String path =
+                        com.yuelei.appforge.workspace.vue.VueProjectFiles.sourcePath(
+                                entry.getKey());
+                zip.putNextEntry(new java.util.zip.ZipEntry(path));
+                zip.write(entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+        }
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .header("Content-Disposition", "attachment; filename=app-" + appId + "-source.zip")
+                .header("Cache-Control", "no-store")
+                .body(new org.springframework.core.io.ByteArrayResource(bytes.toByteArray()));
+    }
+
     /** SSE 错误始终以事件返回，避免异常处理器将 JSON 写入 text/event-stream。 */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatToGenCode(
@@ -132,7 +167,23 @@ public class AppController {
                 Flux.defer(
                         () ->
                                 appService.chatToGenCode(
-                                        appId, message, userService.getLoginUser(request)));
+                                        appId,
+                                        message,
+                                        userService.getLoginUser(request),
+                                        event -> {
+                                            try {
+                                                emitter.send(
+                                                        SseEmitter.event()
+                                                                .name("progress")
+                                                                .data(
+                                                                        JSONUtil.toJsonStr(event.toMap()),
+                                                                        MediaType
+                                                                                .APPLICATION_JSON));
+                                            } catch (Exception closed) {
+                                                throw new BusinessException(
+                                                        ErrorCode.OPERATION_ERROR, "连接已关闭");
+                                            }
+                                        }));
         subscription.set(
                 flux.subscribe(
                         chunk -> {

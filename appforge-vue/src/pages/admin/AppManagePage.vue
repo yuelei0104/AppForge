@@ -279,6 +279,7 @@ onMounted(() => {
         >
           <a-select-option value="html">HTML</a-select-option>
           <a-select-option value="multi_file">多文件</a-select-option>
+          <a-select-option value="vue_project">网站工程</a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item>
@@ -316,7 +317,13 @@ onMounted(() => {
         </template>
         <template v-else-if="column.dataIndex === 'codeGenType'">
           <a-tag :color="record.codeGenType === 'multi_file' ? 'purple' : 'blue'">
-            {{ record.codeGenType === 'multi_file' ? '多文件' : 'HTML' }}
+            {{
+              record.codeGenType === 'vue_project'
+                ? '网站工程'
+                : record.codeGenType === 'multi_file'
+                  ? '多文件'
+                  : 'HTML'
+            }}
           </a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'visibility'">{{

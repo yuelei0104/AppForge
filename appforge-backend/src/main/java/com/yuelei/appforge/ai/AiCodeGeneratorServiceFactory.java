@@ -98,6 +98,16 @@ public class AiCodeGeneratorServiceFactory {
         return memory;
     }
 
+    /** 文件工具持有调用级工作目录，因此工程服务按次构建，不能缓存到其他调用。 */
+    public VueProjectAiService vueProjectService(Object tools, StreamingChatModel model) {
+        return AiServices.builder(VueProjectAiService.class)
+                .streamingChatModel(model)
+                .chatMemory(MessageWindowChatMemory.withMaxMessages(80))
+                .tools(tools)
+                .maxSequentialToolsInvocations(60)
+                .build();
+    }
+
     /** 完整回复持久化后，以数据库的最新窗口重建 Redis，避免重复追加。 */
     public void refreshChatMemory(long appId) {
         chatHistoryService.loadChatHistoryToMemory(appId, getChatMemory(appId), 20, false);
@@ -145,4 +155,5 @@ public class AiCodeGeneratorServiceFactory {
         return service;
     }
 }
+
 
