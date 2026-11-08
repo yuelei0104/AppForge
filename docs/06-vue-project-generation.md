@@ -36,4 +36,8 @@ SSE `progress` 事件只包含 `id`、`operation`、`path`、`state`、`message`
 
 `VueProjectTest` 使用真实文件写入、LangChain4j 原生工具循环与确定性模型、H2 版本事务验证路径约束、文件预算、修改前读取、输出截断、停止、构建失败、回退、资源鉴权与源码下载。Docker 命令构造、拒绝宿主机回退和产物校验使用测试替身验证。
 
-本次另用受信任的 11 文件阅读馆工程，在 Node 18.20.8 下实际完成依赖安装、开发服务器启动和生产构建；浏览器验证嵌套部署路径、hash 刷新、搜索、沙箱模块加载，以及平台文件进度、下载入口和移动布局。当前验证环境没有 Docker，未实跑容器流水线；未调用真实付费模型服务，不能将这些测试视为真实模型端到端验收。
+最初用受信任的 11 文件阅读馆工程，在 Node 18.20.8 下实际完成依赖安装、开发服务器启动和生产构建；浏览器验证嵌套部署路径、hash 刷新、搜索、沙箱模块加载，以及平台文件进度、下载入口和移动布局。
+
+后续增加 `VueProjectRuntimeTest` 进行真实外部服务验证。真实 DeepSeek 模型已通过同一个 `VueProjectRunner` 和原生工具循环，逐个写入 12 个工程源码文件，并通过源码契约校验。审查后的完整输出保存在 `src/test/resources/vue-live-project.json`，没有模型凭证；Docker 测试读取的就是这份真实输出。
+
+当前交互环境没有 Docker daemon，实际容器验证由 [Vue runtime verification](https://github.com/yuelei0104/AppForge/actions/workflows/vue-runtime-verification.yml) 在 GitHub 执行，调用生产 `VueProjectBuilder`，保留构建后的 `dist` 和测试报告。流水线只启用 `APPFORGE_DOCKER_TEST`，不会调用付费模型。真实模型测试只有显式启用 `APPFORGE_LIVE_MODEL_TEST` 才运行，关闭请求与响应日志；可由 `APPFORGE_LIVE_MODEL_API_KEY`、`APPFORGE_LIVE_MODEL_BASE_URL`、`APPFORGE_LIVE_MODEL_NAME` 提供独立测试配置。模型阶段与容器阶段分别运行，不等于完整在线应用、MySQL 和 Redis 的部署联调。
