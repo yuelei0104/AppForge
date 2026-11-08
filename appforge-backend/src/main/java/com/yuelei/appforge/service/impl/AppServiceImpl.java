@@ -97,7 +97,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 ErrorCode.PARAMS_ERROR,
                 "应用封面地址不能超过 " + AppConstant.COVER_MAX_LENGTH + " 个字符");
 
-        // 代码生成类型不填时默认 HTML 模式
+        // 兼容未指定模式的旧客户端；新首页显式传入用户所选模式。
         String codeGenType = StrUtil.trim(appAddRequest.getCodeGenType());
         if (StrUtil.isBlank(codeGenType)) {
             codeGenType = CodeGenTypeEnum.MULTI_FILE.getValue();
@@ -130,6 +130,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setUserId(loginUser.getId());
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "创建应用失败");
+        log.info("创建应用成功 appId={}, codeGenType={}", app.getId(), codeGenType);
         if (StrUtil.isBlank(appAddRequest.getAppName()))
             names.suggest(app.getId(), initPrompt, appName);
         return app.getId();

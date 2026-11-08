@@ -21,7 +21,7 @@ public class AppAddRequest implements Serializable {
     /** 应用初始化的 prompt */
     private String initPrompt;
 
-    /** 代码生成类型（html/multi_file，不填默认 html） */
+    /** 代码生成类型（html/multi_file/vue_project，不填兼容为 multi_file） */
     private String codeGenType;
 
     private String description;

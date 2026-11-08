@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { listPublicApps, type AppInfo, type AppFilters } from '@/api/workspace'
+import { createAppWithMode, listPublicApps, type AppInfo, type AppFilters } from '@/api/workspace'
+import { generationModeOptions, type GenerationMode } from '@/utils/generationMode'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { ArrowUpOutlined, LoginOutlined } from '@ant-design/icons-vue'
 import AppCard from '@/components/AppCard.vue'
-import { addApp, listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController'
+import { listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController'
 import { useLoginUserStore } from '@/stores/loginUser'
 
 const router = useRouter()
@@ -35,7 +36,7 @@ const quickPrompts = [
 ]
 
 const prompt = ref('')
-const generationMode = ref('vue_project')
+const generationMode = ref<GenerationMode>('vue_project')
 const creating = ref(false)
 
 const myApps = ref<AppInfo[]>([])
@@ -78,15 +79,11 @@ async function handleCreate() {
   }
   creating.value = true
   try {
-    const res = await addApp({ initPrompt, codeGenType: generationMode.value })
-    if (res.data.code === 0 && res.data.data != null) {
-      message.success('应用创建成功，正在为你生成')
-      await router.push(`/app/chat/${String(res.data.data)}`)
-    } else {
-      message.error(res.data.message || '创建应用失败')
-    }
-  } catch {
-    message.error('创建应用失败，请稍后重试')
+    const id = await createAppWithMode(initPrompt, generationMode.value)
+    message.success('应用创建成功，正在为你生成')
+    await router.push(`/app/chat/${id}`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '创建应用失败，请稍后重试')
   } finally {
     creating.value = false
   }
@@ -216,11 +213,7 @@ onMounted(() => {
                 v-model:value="generationMode"
                 aria-label="生成模式"
                 :disabled="creating"
-                :options="[
-                  { value: 'vue_project', label: '完整网站工程' },
-                  { value: 'multi_file', label: '轻量网站' },
-                  { value: 'html', label: '单页网站' },
-                ]"
+                :options="generationModeOptions"
               />
               <span class="prompt-panel__hint">描述越具体，生成效果越好</span>
             </div>

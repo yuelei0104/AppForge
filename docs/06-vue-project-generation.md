@@ -6,6 +6,12 @@
 
 `AppGenerationService` 为每次工程生成建立独立的 `ProjectTask`。`VueProjectRunner` 通过现有工厂建立调用级 AI Service，使用 LangChain4j 原生工具循环；工具实例携带本次目录，不能放入跨请求缓存。历史摘要继续经 `AiCodeGeneratorFacade` 获取，完整会话成功保存后再更新应用记忆。
 
+## 创建模式确认
+
+首页通过 `createAppWithMode` 提交显式的 `codeGenType`，随后读取新应用信息确认实际保存的类型。只有所选模式与返回类型一致才进入对话页并自动生成；不一致、缺少类型或确认失败均明确提示，不自动再次创建应用。对话页顶部显示应用的实际模式；工程下载仍只针对完整工程，未构建成功时按钮禁用。已有原生网页及其版本保持原类型。
+
+创建和开始生成的后端日志记录 `appId`、`codeGenType`，便于核对本地请求和运行版本，不记录提示词或凭证。`AppCreationModeTest` 用真实 JSON 接口、服务及 MyBatis-Flex 的 INSERT/SELECT 往返验证三种显式模式，并保留未传模式时的兼容默认值。
+
 ## 文件契约
 
 模型通过 `readDirectory`、`readFile`、`writeFile`、`modifyFile`、`deleteFile` 操作源码，不能执行命令。修改或删除已有文件前必须读取目录和文件，局部替换要求原文唯一匹配。每次生成只写入独立临时目录，拒绝绝对路径、目录穿越、符号链接、Windows 设备名、环境文件和额外构建配置。
