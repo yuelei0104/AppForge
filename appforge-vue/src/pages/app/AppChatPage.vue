@@ -6,7 +6,9 @@ import {
 } from '@/api/chatHistoryController'
 import { validateMarkdownExport } from '@/utils/chatExport'
 import ChatMemoryModal from '@/components/ChatMemoryModal.vue'
-import { prependHistory, oldestCursor, type ChatMessage } from '@/utils/chatHistory'
+import GenerationProgress from '@/components/GenerationProgress.vue'
+import request from '@/request'
+import { prependHistory, oldestCursor, updateProgress, type ChatMessage } from '@/utils/chatHistory'
 import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
 import { generationLabel } from '@/utils/appStatus'
 import VersionHistoryDrawer from '@/components/VersionHistoryDrawer.vue'
@@ -78,7 +80,9 @@ const historyOpen = ref(false)
 const memoryOpen = ref(false)
 const statistics = ref<API.ChatStatistics>()
 const exporting = ref(false)
-let statisticsAbort: AbortController | undefined, exportAbort: AbortController | undefined
+let statisticsAbort: AbortController | undefined,
+  exportAbort: AbortController | undefined,
+  sourceAbort: AbortController | undefined
 async function loadStatistics() {
   if (!canManage.value) return
   statisticsAbort?.abort()
@@ -97,6 +101,40 @@ function openMemory() {
   memoryOpen.value = true
   void loadStatistics()
 }
+const downloadingSource = ref(false)
+async function downloadSource() {
+  if (!canManage.value || downloadingSource.value) return
+  const id = appId.value,
+    sequence = loadSequence
+  const controller = new AbortController()
+  sourceAbort?.abort()
+  sourceAbort = controller
+  downloadingSource.value = true
+  try {
+    const res = await request<Blob>('/app/source/download', {
+      params: { appId: id },
+      responseType: 'blob',
+      signal: controller.signal,
+    })
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (!String(res.headers['content-type']).includes('application/zip')) {
+      const error = JSON.parse(await res.data.text()) as { message?: string }
+      throw new Error(error.message || '工程下载失败')
+    }
+    const url = URL.createObjectURL(res.data),
+      link = document.createElement('a')
+    link.href = url
+    link.download = `app-${id}-source.zip`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error) {
+    if (sequence === loadSequence && !controller.signal.aborted)
+      message.error(error instanceof Error ? error.message : '工程下载失败')
+  } finally {
+    if (sequence === loadSequence) downloadingSource.value = false
+  }
+}
+
 async function handleExport() {
   if (!canManage.value || exporting.value) return
   const id = appId.value,
@@ -380,6 +418,19 @@ function openEventSource(userMessage: string, aiMessage: ChatMessage) {
     void scrollToBottom()
   }
 
+  es.addEventListener('progress', (event) => {
+    if (eventSource !== es || !streaming.value) return
+    try {
+      aiMessage.progress = updateProgress(
+        aiMessage.progress || [],
+        JSON.parse((event as MessageEvent).data),
+      )
+    } catch {
+      /* 不完整的进度事件不影响正文。 */
+    }
+    void scrollToBottom()
+  })
+
   es.addEventListener('done', () => {
     if (eventSource === es) {
       finishStream(aiMessage, true)
@@ -488,9 +539,11 @@ async function loadApp() {
   statisticsAbort?.abort()
   exportAbort?.abort()
   statistics.value = undefined
+  downloadingSource.value = false
   exporting.value = false
   memoryOpen.value = false
   historyAbort?.abort()
+  sourceAbort?.abort()
   historyLoading.value = false
   historyLoaded.value = false
   historyError.value = ''
@@ -673,6 +726,7 @@ onBeforeUnmount(() => {
   statisticsAbort?.abort()
   exportAbort?.abort()
   historyAbort?.abort()
+  sourceAbort?.abort()
   clearTimeout(statusTimer)
   loadSequence += 1
   closeStream()
@@ -739,6 +793,13 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="app-chat-page__topbar-actions">
+        <a-button
+          v-if="canManage && app?.codeGenType === 'vue_project'"
+          :loading="downloadingSource"
+          :disabled="!app.currentVersion"
+          @click="downloadSource"
+          >下载工程</a-button
+        >
         <a-button v-if="canManage" :loading="exporting" @click="handleExport"
           ><template #icon><DownloadOutlined /></template>导出对话</a-button
         >
@@ -842,7 +903,14 @@ onBeforeUnmount(() => {
             <div class="chat-message__body">
               <div class="chat-message__bubble">
                 <div class="chat-message__content">
-                  <MarkdownContent v-if="item.role === 'ai'" :content="item.content" />
+                  <template v-if="item.role === 'ai'">
+                    <MarkdownContent :content="item.content" />
+                    <GenerationProgress
+                      v-if="item.progress?.length"
+                      :items="item.progress"
+                      :stopped="item.status === 'stopped' || item.status === 'error'"
+                    />
+                  </template>
                   <template v-else>{{ item.content }}</template>
                   <span v-if="item.status === 'streaming'" class="chat-message__cursor" />
                 </div>

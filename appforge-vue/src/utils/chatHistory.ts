@@ -1,4 +1,52 @@
+export interface ToolProgress {
+  id: string
+  operation: string
+  path: string
+  state: 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+  message: string
+}
+
+export function updateProgress(current: ToolProgress[], value: unknown): ToolProgress[] {
+  if (!value || typeof value !== 'object') return current
+  const item = value as Partial<ToolProgress>
+  if (
+    typeof item.id !== 'string' ||
+    typeof item.operation !== 'string' ||
+    typeof item.path !== 'string' ||
+    typeof item.message !== 'string' ||
+    !['RUNNING', 'SUCCEEDED', 'FAILED'].includes(item.state || '')
+  )
+    return current
+  if (
+    !item.id ||
+    item.id.length > 64 ||
+    item.path.length > 160 ||
+    item.message.length > 200 ||
+    ![
+      'read_directory',
+      'read_file',
+      'write_file',
+      'modify_file',
+      'delete_file',
+      'prepare',
+      'build',
+    ].includes(item.operation)
+  )
+    return current
+  const safe: ToolProgress = {
+    id: item.id,
+    operation: item.operation,
+    path: item.path,
+    state: item.state as ToolProgress['state'],
+    message: item.message,
+  }
+  const found = current.findIndex((row) => row.id === item.id)
+  if (found < 0) return [...current.slice(-199), safe]
+  return current.map((row, index) => (index === found ? safe : row))
+}
+
 export interface ChatMessage {
+  progress?: ToolProgress[]
   id: string
   role: 'user' | 'ai'
   content: string

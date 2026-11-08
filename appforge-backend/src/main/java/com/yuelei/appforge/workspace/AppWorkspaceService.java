@@ -5,6 +5,7 @@ import cn.hutool.json.JSONUtil;
 
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.entity.*;
+import com.yuelei.appforge.workspace.vue.VueProjectFiles;
 
 import jakarta.annotation.Resource;
 
@@ -86,11 +87,16 @@ public class AppWorkspaceService {
 
     public Map<String, String> versionFiles(long id, int version, User user) {
         AppPolicy.manage(requireApp(id), user);
-        return files(id, version);
+        Map<String, String> files = files(id, version);
+        return VueProjectFiles.isProject(files) ? VueProjectFiles.sources(files) : files;
     }
 
     private int append(
             App app, Map<String, String> files, String kind, Integer source, String summary) {
+        ThrowUtils.throwIf(
+                "vue_project".equals(app.getCodeGenType()) != VueProjectFiles.isProject(files),
+                ErrorCode.OPERATION_ERROR,
+                "版本类型与应用不一致");
         validateFiles(files);
         Integer latest =
                 jdbcTemplate.queryForObject(
@@ -339,6 +345,10 @@ public class AppWorkspaceService {
     }
 
     public static void validateFiles(Map<String, String> files) {
+        if (files != null && VueProjectFiles.isProject(files)) {
+            VueProjectFiles.validate(files);
+            return;
+        }
         ThrowUtils.throwIf(
                 files == null
                         || files.getOrDefault("index.html", "").isBlank()
@@ -353,3 +363,4 @@ public class AppWorkspaceService {
                 "生成代码过大或包含不支持的文件");
     }
 }
+

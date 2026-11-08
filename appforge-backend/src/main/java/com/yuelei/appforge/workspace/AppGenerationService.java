@@ -6,6 +6,7 @@ import com.yuelei.appforge.core.parser.CodeParserExecutor;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.entity.*;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
+import com.yuelei.appforge.workspace.vue.*;
 
 import jakarta.annotation.Resource;
 
@@ -23,6 +24,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 @Service
@@ -31,6 +33,7 @@ public class AppGenerationService {
     @Resource private JdbcTemplate jdbcTemplate;
     @Resource private AppWorkspaceService workspace;
     @Resource private AiCodeGeneratorFacade generator;
+    @Resource private VueProjectRunner projectRunner;
     private final Map<Long, Job> jobs = new ConcurrentHashMap<>();
 
     private static final class Job {
@@ -38,6 +41,7 @@ public class AppGenerationService {
         final Sinks.One<String> stop = Sinks.one();
         final AtomicBoolean stopped = new AtomicBoolean();
         final StringBuilder code = new StringBuilder();
+        ProjectTask project;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -59,12 +63,25 @@ public class AppGenerationService {
 
     public Flux<String> generate(
             App app, String message, Runnable onStarted, LongSupplier userMessageId) {
-        return Flux.defer(() -> begin(app, message, onStarted, userMessageId))
+        return generate(app, message, onStarted, userMessageId, event -> {});
+    }
+
+    public Flux<String> generate(
+            App app,
+            String message,
+            Runnable onStarted,
+            LongSupplier userMessageId,
+            Consumer<GenerationProgress> progress) {
+        return Flux.defer(() -> begin(app, message, onStarted, userMessageId, progress))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
     private Flux<String> begin(
-            App app, String message, Runnable onStarted, LongSupplier userMessageId) {
+            App app,
+            String message,
+            Runnable onStarted,
+            LongSupplier userMessageId,
+            Consumer<GenerationProgress> progress) {
         long id = app.getId();
         workspace.ensureBaseline(id);
         Job job = new Job();
@@ -84,6 +101,9 @@ public class AppGenerationService {
             // 先认领任务再读取上下文，阻止回退/发布与上下文读取之间发生竞争。
             request = context(workspace.requireApp(id), message);
             onStarted.run();
+            if ("vue_project".equals(app.getCodeGenType()))
+                job.project =
+                        new ProjectTask(workspace.previewFiles(workspace.requireApp(id)), progress);
         } catch (RuntimeException error) {
             jobs.remove(id, job);
             fail(id, job, error);
@@ -91,13 +111,17 @@ public class AppGenerationService {
         }
         return Flux.defer(
                         () ->
-                                generator.generateCodeStream(
-                                        request,
-                                        message,
-                                        CodeGenTypeEnum.getEnumByValue(app.getCodeGenType()),
-                                        id,
-                                        userMessageId.getAsLong()))
-                .timeout(Duration.ofSeconds(120))
+                                job.project != null
+                                        ? projectRunner.stream(
+                                                id, userMessageId.getAsLong(), request, job.project)
+                                        : generator.generateCodeStream(
+                                                request,
+                                                message,
+                                                CodeGenTypeEnum.getEnumByValue(
+                                                        app.getCodeGenType()),
+                                                id,
+                                                userMessageId.getAsLong()))
+                .timeout(Duration.ofSeconds(job.project == null ? 120 : 300))
                 .doOnNext(
                         chunk -> {
                             ThrowUtils.throwIf(
@@ -110,7 +134,11 @@ public class AppGenerationService {
                 .concatWith(Mono.defer(() -> finish(app, message, job)))
                 .doOnError(error -> fail(id, job, error))
                 .doOnCancel(() -> markStopped(id, job))
-                .doFinally(signal -> jobs.remove(id, job));
+                .doFinally(
+                        signal -> {
+                            jobs.remove(id, job);
+                            if (job.project != null) projectRunner.close(job.project);
+                        });
     }
 
     /** 原始回复和版本均保存成功后，才更新记忆并检查自动摘要。 */
@@ -121,7 +149,12 @@ public class AppGenerationService {
     private Mono<String> finish(App app, String message, Job job) {
         if (job.stopped.get()) return Mono.error(new GenerationStoppedException());
         workspace.complete(
-                app.getId(), job.token, parse(job.code.toString(), app.getCodeGenType()), message);
+                app.getId(),
+                job.token,
+                job.project == null
+                        ? parse(job.code.toString(), app.getCodeGenType())
+                        : job.project.result(),
+                message);
         return Mono.empty();
     }
 
@@ -141,6 +174,11 @@ public class AppGenerationService {
     }
 
     private String context(App app, String message) {
+        if ("vue_project".equals(app.getCodeGenType()))
+            return "应用最初目标：\n"
+                    + Objects.toString(app.getInitPrompt(), "")
+                    + "\n用户本轮要求：\n"
+                    + message;
         Map<String, String> files = workspace.previewFiles(app);
         if (files.isEmpty()) return message;
         StringBuilder context =
@@ -174,6 +212,7 @@ public class AppGenerationService {
 
     private void markStopped(long id, Job job) {
         job.stopped.set(true);
+        if (job.project != null) job.project.cancel();
         jdbcTemplate.update(
                 "UPDATE app SET"
                     + " generationStatus='STOPPED',generationToken='',generationError='生成已停止',updateTime=?"
@@ -215,4 +254,5 @@ public class AppGenerationService {
         }
     }
 }
+
 

@@ -3,6 +3,7 @@ package com.yuelei.appforge.workspace;
 import com.yuelei.appforge.constant.AppConstant;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
+import com.yuelei.appforge.workspace.vue.VueProjectFiles;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -11,7 +12,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
-/** 文件名固定为三个原生前端文件，所有路径均由服务端标识构造。 */
+/** 应用和版本目录由服务端标识构造，原生文件和工程路径分别校验。 */
 @Component
 public class AppFileStore {
     public static final Set<String> FILES = Set.of("index.html", "style.css", "script.js");
@@ -58,8 +59,13 @@ public class AppFileStore {
         try {
             Files.createDirectories(target);
             for (var entry : files.entrySet()) {
-                ThrowUtils.throwIf(
-                        !FILES.contains(entry.getKey()), ErrorCode.PARAMS_ERROR, "不支持的代码文件");
+                if (VueProjectFiles.isProject(files)) {
+                    if (!VueProjectFiles.runtimePath(entry.getKey()))
+                        VueProjectFiles.sourcePath(entry.getKey());
+                } else
+                    ThrowUtils.throwIf(
+                            !FILES.contains(entry.getKey()), ErrorCode.PARAMS_ERROR, "不支持的代码文件");
+                Files.createDirectories(target.resolve(entry.getKey()).getParent());
                 Files.writeString(
                         target.resolve(entry.getKey()),
                         entry.getValue(),

@@ -29,6 +29,11 @@ const options = computed(() =>
     value: v.version,
   })),
 )
+const fileOptions = computed(() =>
+  [...new Set([...Object.keys(leftFiles.value), ...Object.keys(rightFiles.value)])]
+    .sort()
+    .map((value) => ({ value, label: value })),
+)
 const rows = computed(() =>
   buildDiffRows(leftFiles.value[filename.value] || '', rightFiles.value[filename.value] || ''),
 )
@@ -74,6 +79,8 @@ async function compare() {
       throw new Error(a.data.message || b.data.message || '读取版本失败')
     leftFiles.value = a.data.data
     rightFiles.value = b.data.data
+    if (!fileOptions.value.some((item) => item.value === filename.value))
+      filename.value = fileOptions.value[0]?.value || 'index.html'
     compareReady.value = true
   } catch (error) {
     if (token === compareSequence)
@@ -132,13 +139,7 @@ watch(
           <label
             >目标版本<a-select v-model:value="after" :options="options" @change="compare"
           /></label>
-          <label
-            >代码文件<a-select
-              v-model:value="filename"
-              :options="
-                ['index.html', 'style.css', 'script.js'].map((value) => ({ value, label: value }))
-              "
-          /></label>
+          <label>代码文件<a-select v-model:value="filename" :options="fileOptions" /></label>
           <a-popconfirm
             title="确认恢复此版本？"
             description="会创建一个新版本，不会覆盖历史或直接修改已部署网站。"

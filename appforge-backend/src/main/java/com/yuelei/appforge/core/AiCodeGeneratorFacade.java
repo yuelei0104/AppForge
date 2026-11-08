@@ -73,6 +73,8 @@ public class AiCodeGeneratorFacade {
             Long appId,
             long currentUserMessageId,
             boolean rememberOnComplete) {
+        if (type == CodeGenTypeEnum.VUE_PROJECT)
+            return Flux.error(new BusinessException(ErrorCode.PARAMS_ERROR, "工程模式请通过应用工作台生成"));
         if (type == null)
             return Flux.error(new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码类型"));
 
@@ -107,6 +109,20 @@ public class AiCodeGeneratorFacade {
                         });
     }
 
+    public String contextForProject(String request, long appId, long currentMessageId) {
+        try {
+            String compact = chatMemoryService.buildPrompt(appId, currentMessageId, request);
+            if (compact != null) return compact;
+        } catch (RuntimeException unavailable) {
+            log.warn("读取工程摘要暂不可用 appId={}", appId);
+        }
+        try {
+            return withHistory(aiCodeGeneratorServiceFactory.getChatMemory(appId), request);
+        } catch (RuntimeException unavailable) {
+            return request;
+        }
+    }
+
     public void rememberSuccessfulConversation(long appId, String userMessage, String aiResponse) {
         try {
             aiCodeGeneratorServiceFactory.refreshChatMemory(appId);
@@ -117,7 +133,10 @@ public class AiCodeGeneratorFacade {
     }
 
     public File generateAndSaveCode(String message, CodeGenTypeEnum type, Long appId) {
-        ThrowUtils.throwIf(type == null, ErrorCode.PARAMS_ERROR, "不支持的代码类型");
+        ThrowUtils.throwIf(
+                type == null || type == CodeGenTypeEnum.VUE_PROJECT,
+                ErrorCode.PARAMS_ERROR,
+                "请通过应用工作台生成此类型");
         long id = appId == null ? 0L : appId;
         AiCodeGeneratorService service =
                 aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(id);
@@ -174,4 +193,5 @@ public class AiCodeGeneratorFacade {
         }
     }
 }
+
 
