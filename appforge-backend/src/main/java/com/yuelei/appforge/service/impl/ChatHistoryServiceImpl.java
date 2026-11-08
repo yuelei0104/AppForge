@@ -15,20 +15,25 @@ import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.ChatHistory;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.model.enums.ChatHistoryMessageTypeEnum;
+import com.yuelei.appforge.model.vo.ChatStatisticsVO;
 import com.yuelei.appforge.service.AppService;
 import com.yuelei.appforge.service.ChatHistoryService;
 
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+
 import jakarta.annotation.Resource;
 
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.io.Writer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,6 +56,11 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     @Override
     public boolean addChatMessage(Long appId, String message, String messageType, Long userId) {
+        return appendChatMessage(appId, message, messageType, userId) > 0;
+    }
+
+    @Override
+    public long appendChatMessage(Long appId, String message, String messageType, Long userId) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "消息内容不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(messageType), ErrorCode.PARAMS_ERROR, "消息类型不能为空");
@@ -67,7 +77,8 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                         .messageType(messageType)
                         .userId(userId)
                         .build();
-        return this.save(chatHistory);
+        ThrowUtils.throwIf(!this.save(chatHistory), ErrorCode.OPERATION_ERROR, "保存消息失败");
+        return chatHistory.getId();
     }
 
     @Override
@@ -146,14 +157,98 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         ThrowUtils.throwIf(
                 appId == null || appId <= 0 || pageSize < 1 || pageSize > 50,
                 ErrorCode.PARAMS_ERROR);
-        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
+        requireChatAccess(appId, loginUser);
+    }
+
+    @Override
+    public App requireChatAccess(Long appId, User user) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(user == null || user.getId() == null, ErrorCode.NOT_LOGIN_ERROR);
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         ThrowUtils.throwIf(
-                !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())
-                        && !Objects.equals(app.getUserId(), loginUser.getId()),
+                !UserConstant.ADMIN_ROLE.equals(user.getUserRole())
+                        && !Objects.equals(app.getUserId(), user.getId()),
                 ErrorCode.NO_AUTH_ERROR,
                 "无权查看该应用的对话历史");
+        return app;
+    }
+
+    @Override
+    public ChatStatisticsVO statistics(Long appId, User user) {
+        requireChatAccess(appId, user);
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) messageCount,COALESCE(SUM(CASE WHEN messageType='user' THEN 1 ELSE"
+                    + " 0 END),0) roundCount,COALESCE(SUM(CASE WHEN messageType='ai' THEN 1 ELSE 0"
+                    + " END),0) aiMessageCount,MAX(createTime) lastMessageTime FROM chat_history"
+                    + " WHERE appId=? AND isDelete=0",
+                (rs, n) -> {
+                    var result = new ChatStatisticsVO();
+                    result.setRoundCount(rs.getLong("roundCount"));
+                    result.setMessageCount(rs.getLong("messageCount"));
+                    result.setAiMessageCount(rs.getLong("aiMessageCount"));
+                    var last = rs.getTimestamp("lastMessageTime");
+                    if (last != null) result.setLastMessageTime(last.toLocalDateTime());
+                    return result;
+                },
+                appId);
+    }
+
+    @Override
+    public void exportMarkdown(Long appId, User user, Writer writer) throws IOException {
+        App app = requireChatAccess(appId, user);
+        Long ceiling =
+                jdbcTemplate.queryForObject(
+                        "SELECT COALESCE(MAX(id),0) FROM chat_history WHERE appId=? AND isDelete=0",
+                        Long.class,
+                        appId);
+        writer.write(
+                "# "
+                        + Objects.toString(app.getAppName(), "未命名应用").replaceAll("[\\r\\n]", " ")
+                        + " · 对话记录\n\n应用 ID：`"
+                        + appId
+                        + "`\n\n导出时间："
+                        + LocalDateTime.now()
+                        + "\n\n");
+        LocalDateTime cursorTime = null;
+        long cursorId = 0, index = 0;
+        while (true) {
+            var params = new ArrayList<Object>();
+            params.add(appId);
+            params.add(ceiling);
+            String sql =
+                    "SELECT id,message,messageType,appId,userId,createTime,updateTime FROM"
+                        + " chat_history WHERE appId=? AND id<=? AND isDelete=0";
+            if (cursorTime != null) {
+                sql += " AND (createTime>? OR (createTime=? AND id>?))";
+                params.add(cursorTime);
+                params.add(cursorTime);
+                params.add(cursorId);
+            }
+            var batch =
+                    jdbcTemplate.query(
+                            sql + " ORDER BY createTime ASC,id ASC LIMIT 20",
+                            BeanPropertyRowMapper.newInstance(ChatHistory.class),
+                            params.toArray());
+            if (batch.isEmpty()) break;
+            for (ChatHistory item : batch) {
+                writer.write(
+                        "## "
+                                + (++index)
+                                + ". "
+                                + ("user".equals(item.getMessageType()) ? "用户" : "AI")
+                                + " · "
+                                + item.getCreateTime()
+                                + "\n\n");
+                writer.write(Objects.toString(item.getMessage(), ""));
+                writer.write("\n\n---\n\n");
+            }
+            writer.flush();
+            var last = batch.getLast();
+            cursorTime = last.getCreateTime();
+            cursorId = last.getId();
+        }
+        if (index == 0) writer.write("暂无对话记录。\n");
     }
 
     private Page<ChatHistory> queryHistory(
@@ -193,14 +288,23 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     @Override
     public int loadChatHistoryToMemory(Long appId, MessageWindowChatMemory chatMemory, int maxCount) {
+        return loadChatHistoryToMemory(appId, chatMemory, maxCount, true);
+    }
+
+    @Override
+    public int loadChatHistoryToMemory(
+            Long appId, MessageWindowChatMemory chatMemory, int maxCount, boolean skipLatest) {
         try {
-            // 直接构造查询条件，起始点为 1 而不是 0，用于排除最新的用户消息
-            QueryWrapper queryWrapper = QueryWrapper.create()
-                .eq(ChatHistory::getAppId, appId)
-                .orderBy(ChatHistory::getCreateTime, false)
-                .limit(1, maxCount);
+            // 生成开始时排除本轮用户消息；完整回复入库后从最新一条恢复。
+            QueryWrapper queryWrapper =
+                    QueryWrapper.create()
+                            .eq(ChatHistory::getAppId, appId)
+                            .orderBy(ChatHistory::getCreateTime, false)
+                            .orderBy(ChatHistory::getId, false)
+                            .limit(skipLatest ? 1 : 0, maxCount);
             List<ChatHistory> historyList = this.list(queryWrapper);
             if (CollUtil.isEmpty(historyList)) {
+                chatMemory.clear();
                 return 0;
             }
             // 反转列表，确保按时间正序（老的在前，新的在后）
@@ -228,3 +332,4 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
     }
 
 }
+

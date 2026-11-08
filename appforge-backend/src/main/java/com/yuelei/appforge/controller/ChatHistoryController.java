@@ -11,15 +11,23 @@ import com.yuelei.appforge.exception.ThrowUtils;
 import com.yuelei.appforge.model.dto.chathistory.ChatHistoryQueryRequest;
 import com.yuelei.appforge.model.entity.ChatHistory;
 import com.yuelei.appforge.model.entity.User;
+import com.yuelei.appforge.model.vo.ChatMemoryVO;
+import com.yuelei.appforge.model.vo.ChatStatisticsVO;
 import com.yuelei.appforge.service.ChatHistoryService;
+import com.yuelei.appforge.service.ChatMemoryService;
 import com.yuelei.appforge.service.UserService;
 
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.*;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -35,6 +43,7 @@ public class ChatHistoryController {
     @Autowired private ChatHistoryService chatHistoryService;
 
     @Autowired private UserService userService;
+    @Autowired private ChatMemoryService chatMemoryService;
 
     /**
      * 保存。
@@ -44,8 +53,12 @@ public class ChatHistoryController {
      */
     @PostMapping("save")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @Transactional
     public boolean save(@RequestBody ChatHistory chatHistory) {
-        return chatHistoryService.save(chatHistory);
+        boolean result = chatHistoryService.save(chatHistory);
+        if (result && chatHistory.getAppId() != null)
+            chatMemoryService.invalidate(chatHistory.getAppId());
+        return result;
     }
 
     /**
@@ -56,8 +69,12 @@ public class ChatHistoryController {
      */
     @DeleteMapping("remove/{id}")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @Transactional
     public boolean remove(@PathVariable Long id) {
-        return chatHistoryService.removeById(id);
+        ChatHistory previous = chatHistoryService.getById(id);
+        boolean result = chatHistoryService.removeById(id);
+        if (result && previous != null) chatMemoryService.invalidate(previous.getAppId());
+        return result;
     }
 
     /**
@@ -68,8 +85,17 @@ public class ChatHistoryController {
      */
     @PutMapping("update")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @Transactional
     public boolean update(@RequestBody ChatHistory chatHistory) {
-        return chatHistoryService.updateById(chatHistory);
+        ChatHistory previous = chatHistoryService.getById(chatHistory.getId());
+        boolean result = chatHistoryService.updateById(chatHistory);
+        if (result) {
+            if (previous != null) chatMemoryService.invalidate(previous.getAppId());
+            if (chatHistory.getAppId() != null
+                    && (previous == null || !chatHistory.getAppId().equals(previous.getAppId())))
+                chatMemoryService.invalidate(chatHistory.getAppId());
+        }
+        return result;
     }
 
     /**
@@ -131,6 +157,47 @@ public class ChatHistoryController {
         return ResultUtils.success(result);
     }
 
+    @GetMapping("/app/{appId}/stats")
+    public BaseResponse<ChatStatisticsVO> statistics(
+            @PathVariable Long appId, HttpServletRequest request) {
+        return ResultUtils.success(
+                chatHistoryService.statistics(appId, userService.getLoginUser(request)));
+    }
+
+    @GetMapping("/app/{appId}/export")
+    public ResponseEntity<StreamingResponseBody> export(
+            @PathVariable Long appId, HttpServletRequest request) {
+        User user = userService.getLoginUser(request);
+        // 权限错误先返回统一 JSON，避免提交下载响应头后才拒绝访问。
+        chatHistoryService.requireChatAccess(appId, user);
+        StreamingResponseBody body =
+                output -> {
+                    var writer = new OutputStreamWriter(output, StandardCharsets.UTF_8);
+                    chatHistoryService.exportMarkdown(appId, user, writer);
+                    writer.flush();
+                };
+        return ResponseEntity.ok()
+                .contentType(new MediaType("text", "markdown", StandardCharsets.UTF_8))
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=app-" + appId + "-chat.md")
+                .cacheControl(CacheControl.noStore())
+                .body(body);
+    }
+
+    @GetMapping("/app/{appId}/memory")
+    public BaseResponse<ChatMemoryVO> memory(@PathVariable Long appId, HttpServletRequest request) {
+        return ResultUtils.success(
+                chatMemoryService.getStatus(appId, userService.getLoginUser(request)));
+    }
+
+    @PostMapping("/app/{appId}/memory/compress")
+    public BaseResponse<ChatMemoryVO> compress(
+            @PathVariable Long appId, HttpServletRequest request) {
+        return ResultUtils.success(
+                chatMemoryService.compress(appId, userService.getLoginUser(request)));
+    }
+
     /**
      * 管理员分页查询所有对话历史
      *
@@ -153,3 +220,4 @@ public class ChatHistoryController {
         return ResultUtils.success(result);
     }
 }
+

@@ -96,3 +96,13 @@ CREATE TABLE IF NOT EXISTS chat_history (
   isDelete tinyint NOT NULL DEFAULT 0,
   KEY idx_chat_history_cursor (appId, isDelete, createTime, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE IF NOT EXISTS chat_memory_summary (
+ appId bigint NOT NULL PRIMARY KEY,
+ coveredThroughId bigint NOT NULL DEFAULT 0,
+ coveredMessages bigint NOT NULL DEFAULT 0,
+ summary longtext NOT NULL,
+ revision bigint NOT NULL DEFAULT 0,
+ updatedTime datetime NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

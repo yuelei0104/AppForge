@@ -23,6 +23,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
 
 @Service
 @Slf4j
@@ -53,11 +54,17 @@ public class AppGenerationService {
 
     /** 在成功认领生成任务后记录用户消息，拒绝并发请求时不写入历史。 */
     public Flux<String> generate(App app, String message, Runnable onStarted) {
-        return Flux.defer(() -> begin(app, message, onStarted))
+        return generate(app, message, onStarted, () -> 0L);
+    }
+
+    public Flux<String> generate(
+            App app, String message, Runnable onStarted, LongSupplier userMessageId) {
+        return Flux.defer(() -> begin(app, message, onStarted, userMessageId))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private Flux<String> begin(App app, String message, Runnable onStarted) {
+    private Flux<String> begin(
+            App app, String message, Runnable onStarted, LongSupplier userMessageId) {
         long id = app.getId();
         workspace.ensureBaseline(id);
         Job job = new Job();
@@ -88,7 +95,8 @@ public class AppGenerationService {
                                         request,
                                         message,
                                         CodeGenTypeEnum.getEnumByValue(app.getCodeGenType()),
-                                        id))
+                                        id,
+                                        userMessageId.getAsLong()))
                 .timeout(Duration.ofSeconds(120))
                 .doOnNext(
                         chunk -> {
@@ -103,6 +111,11 @@ public class AppGenerationService {
                 .doOnError(error -> fail(id, job, error))
                 .doOnCancel(() -> markStopped(id, job))
                 .doFinally(signal -> jobs.remove(id, job));
+    }
+
+    /** 原始回复和版本均保存成功后，才更新记忆并检查自动摘要。 */
+    public void afterConversationSaved(long appId, String userMessage, String aiResponse) {
+        generator.rememberSuccessfulConversation(appId, userMessage, aiResponse);
     }
 
     private Mono<String> finish(App app, String message, Job job) {
@@ -202,3 +215,4 @@ public class AppGenerationService {
         }
     }
 }
+

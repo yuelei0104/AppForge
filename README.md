@@ -73,3 +73,5 @@ git commit -m "refactor: run backend directly from its source root"
 ## 应用工作台扩展
 
 版本管理、私有/公开权限、标签搜索、停止生成、部署下线与精选审核的升级步骤见 [应用工作台扩展](docs/03-app-workspace.md)。已有数据库必须先执行其中的一次性升级 SQL，再重启后端。
+
+对话轮数统计、Markdown 导出与智能记忆摘要的升级、使用和验证方式见 [对话扩展说明](docs/05-chat-conversation-extensions.md)。
