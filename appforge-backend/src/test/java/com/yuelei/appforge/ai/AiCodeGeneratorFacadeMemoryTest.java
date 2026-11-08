@@ -1,5 +1,12 @@
 package com.yuelei.appforge.ai;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.yuelei.appforge.core.AiCodeGeneratorFacade;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.workspace.CancellableCodeStream;
@@ -14,13 +21,6 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import reactor.core.publisher.Flux;
-
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 class AiCodeGeneratorFacadeMemoryTest {
 
@@ -37,6 +37,10 @@ class AiCodeGeneratorFacadeMemoryTest {
         AiCodeGeneratorFacade facade = new AiCodeGeneratorFacade();
         ReflectionTestUtils.setField(facade, "aiCodeGeneratorServiceFactory", factory);
         ReflectionTestUtils.setField(facade, "cancellableCodeStream", stream);
+        ReflectionTestUtils.setField(
+                facade,
+                "chatMemoryService",
+                mock(com.yuelei.appforge.service.ChatMemoryService.class));
 
         facade.generateCodeStream("当前请求一", "用户原话一", CodeGenTypeEnum.MULTI_FILE, 1L)
                 .blockLast();
@@ -53,4 +57,25 @@ class AiCodeGeneratorFacadeMemoryTest {
         Assertions.assertTrue(prompt.getAllValues().get(1).contains("AI 回复"));
         Assertions.assertEquals(4, memory.messages().size());
     }
+
+    @Test
+    void workbenchUsesSummaryAndCommitsMemoryOnlyAfterPersistenceSignal() {
+        var factory = mock(AiCodeGeneratorServiceFactory.class);
+        var summaries = mock(com.yuelei.appforge.service.ChatMemoryService.class);
+        when(summaries.buildPrompt(7L, 90L, "含当前代码的请求")).thenReturn("应用七摘要与近期对话");
+        var stream = mock(CancellableCodeStream.class);
+        when(stream.stream("应用七摘要与近期对话", CodeGenTypeEnum.HTML)).thenReturn(Flux.just("完整输出"));
+        var facade = new AiCodeGeneratorFacade();
+        ReflectionTestUtils.setField(facade, "aiCodeGeneratorServiceFactory", factory);
+        ReflectionTestUtils.setField(facade, "chatMemoryService", summaries);
+        ReflectionTestUtils.setField(facade, "cancellableCodeStream", stream);
+        facade.generateCodeStream("含当前代码的请求", "用户原话", CodeGenTypeEnum.HTML, 7L, 90L).blockLast();
+        org.mockito.Mockito.verifyNoInteractions(factory);
+        org.mockito.Mockito.verify(summaries, org.mockito.Mockito.never())
+                .afterConversationSaved(7L);
+        facade.rememberSuccessfulConversation(7L, "用户原话", "完整输出");
+        verify(factory).refreshChatMemory(7L);
+        verify(summaries).afterConversationSaved(7L);
+    }
 }
+

@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { listAppChatHistory } from '@/api/chatHistoryController'
+import {
+  listAppChatHistory,
+  getChatStatistics,
+  exportChatMarkdown,
+} from '@/api/chatHistoryController'
+import { validateMarkdownExport } from '@/utils/chatExport'
+import ChatMemoryModal from '@/components/ChatMemoryModal.vue'
 import { prependHistory, oldestCursor, type ChatMessage } from '@/utils/chatHistory'
 import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
 import { generationLabel } from '@/utils/appStatus'
@@ -14,6 +20,8 @@ import {
   EditOutlined,
   HomeOutlined,
   HistoryOutlined,
+  DownloadOutlined,
+  BulbOutlined,
   StopOutlined,
   InfoCircleOutlined,
   LinkOutlined,
@@ -67,6 +75,52 @@ const deployUrl = ref('')
 const detailsOpen = ref(false)
 const deleting = ref(false)
 const historyOpen = ref(false)
+const memoryOpen = ref(false)
+const statistics = ref<API.ChatStatistics>()
+const exporting = ref(false)
+let statisticsAbort: AbortController | undefined, exportAbort: AbortController | undefined
+async function loadStatistics() {
+  if (!canManage.value) return
+  statisticsAbort?.abort()
+  const controller = new AbortController()
+  statisticsAbort = controller
+  const sequence = loadSequence
+  try {
+    const res = await getChatStatistics(appId.value, controller.signal)
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (res.data.code === 0 && res.data.data) statistics.value = res.data.data
+  } catch {
+    /* 统计暂不可用不阻塞对话，可点击重试。 */
+  }
+}
+function openMemory() {
+  memoryOpen.value = true
+  void loadStatistics()
+}
+async function handleExport() {
+  if (!canManage.value || exporting.value) return
+  const id = appId.value,
+    sequence = loadSequence,
+    controller = new AbortController()
+  exportAbort = controller
+  exporting.value = true
+  try {
+    const res = await exportChatMarkdown(id, controller.signal)
+    const blob = await validateMarkdownExport(res.data, String(res.headers['content-type'] || ''))
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    const url = URL.createObjectURL(blob),
+      link = document.createElement('a')
+    link.href = url
+    link.download = `app-${id}-chat.md`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error) {
+    if (sequence === loadSequence && !controller.signal.aborted)
+      message.error(error instanceof Error ? error.message : '导出失败，请稍后重试')
+  } finally {
+    if (sequence === loadSequence) exporting.value = false
+  }
+}
 const actionLoading = ref(false)
 const stopping = ref(false)
 const isGenerating = computed(() => streaming.value || app.value?.generationStatus === 'GENERATING')
@@ -116,6 +170,7 @@ async function handleStop() {
     if (activeMessage) activeMessage.status = 'stopped'
     if (app.value) app.value.generationStatus = 'STOPPED'
     await refreshApp()
+    void loadStatistics()
     message.info('已停止生成，未保存不完整代码')
   } catch (error) {
     message.error(error instanceof Error ? error.message : '停止失败，请重试')
@@ -248,6 +303,7 @@ async function loadChatHistory(more = false, sequence = loadSequence) {
 }
 
 async function initializeHistory(sequence = loadSequence) {
+  void loadStatistics()
   const loaded = await loadChatHistory(false, sequence)
   if (!loaded || sequence !== loadSequence) return
   if (messages.value.length >= 2 || (app.value?.currentVersion ?? 0) > 0) {
@@ -283,6 +339,7 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
   closeStream()
   if (app.value) app.value.generationStatus = success ? 'SUCCEEDED' : 'FAILED'
   void refreshApp()
+  void loadStatistics()
 
   if (success) {
     aiMessage.status = 'done'
@@ -348,6 +405,7 @@ function openEventSource(userMessage: string, aiMessage: ChatMessage) {
     closeStream()
     message.error(errorText)
     void refreshApp()
+    void loadStatistics()
   })
   es.addEventListener('stopped', () => {
     if (eventSource !== es) return
@@ -357,6 +415,7 @@ function openEventSource(userMessage: string, aiMessage: ChatMessage) {
     if (app.value) app.value.generationStatus = 'STOPPED'
     closeStream()
     void refreshApp()
+    void loadStatistics()
   })
 
   es.onerror = () => {
@@ -426,6 +485,11 @@ function handleComposerKeydown(event: KeyboardEvent) {
 
 async function loadApp() {
   const sequence = ++loadSequence
+  statisticsAbort?.abort()
+  exportAbort?.abort()
+  statistics.value = undefined
+  exporting.value = false
+  memoryOpen.value = false
   historyAbort?.abort()
   historyLoading.value = false
   historyLoaded.value = false
@@ -606,6 +670,8 @@ watch(
 watch(isGenerating, scheduleStatus)
 
 onBeforeUnmount(() => {
+  statisticsAbort?.abort()
+  exportAbort?.abort()
   historyAbort?.abort()
   clearTimeout(statusTimer)
   loadSequence += 1
@@ -647,6 +713,25 @@ onBeforeUnmount(() => {
           </template>
         </a-dropdown>
 
+        <a-tooltip
+          v-if="canManage"
+          :title="
+            statistics
+              ? `共 ${statistics.messageCount} 条消息，按用户发起请求计轮数，含失败或停止的请求`
+              : '统计暂不可用，点击重试'
+          "
+        >
+          <a-tag
+            class="chat-rounds"
+            role="button"
+            tabindex="0"
+            aria-label="刷新对话轮数"
+            @click="loadStatistics"
+            @keydown.enter="loadStatistics"
+            @keydown.space.prevent="loadStatistics"
+            >{{ statistics ? `对话 ${statistics.roundCount} 轮` : '轮数待加载' }}</a-tag
+          >
+        </a-tooltip>
         <a-tag :color="isGenerating ? 'processing' : 'default'"
           >{{ generationLabel(app?.generationStatus)
           }}<template v-if="app?.currentVersion"> · v{{ app.currentVersion }}</template></a-tag
@@ -654,6 +739,12 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="app-chat-page__topbar-actions">
+        <a-button v-if="canManage" :loading="exporting" @click="handleExport"
+          ><template #icon><DownloadOutlined /></template>导出对话</a-button
+        >
+        <a-button v-if="canManage" @click="openMemory"
+          ><template #icon><BulbOutlined /></template>智能记忆</a-button
+        >
         <a-button v-if="canManage" @click="historyOpen = true"
           ><template #icon><HistoryOutlined /></template>版本历史</a-button
         >
@@ -868,6 +959,12 @@ onBeforeUnmount(() => {
       @feature="handleWorkspaceAction('feature')"
     />
 
+    <ChatMemoryModal
+      v-if="canManage"
+      v-model:open="memoryOpen"
+      :app-id="appId"
+      :busy="isGenerating"
+    />
     <VersionHistoryDrawer
       v-model:open="historyOpen"
       :app-id="appId"
@@ -885,6 +982,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.chat-rounds {
+  cursor: pointer;
+}
 .chat-panel__history {
   text-align: center;
   padding: 0 0 12px;

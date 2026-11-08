@@ -98,6 +98,17 @@ public class AiCodeGeneratorServiceFactory {
         return memory;
     }
 
+    /** 完整回复持久化后，以数据库的最新窗口重建 Redis，避免重复追加。 */
+    public void refreshChatMemory(long appId) {
+        chatHistoryService.loadChatHistoryToMemory(appId, getChatMemory(appId), 20, false);
+    }
+
+    /** 独立、无会话记忆的摘要服务。 */
+    @Bean
+    public AiChatSummaryService aiChatSummaryService() {
+        return AiServices.builder(AiChatSummaryService.class).chatModel(chatModel).build();
+    }
+
     /**
      * 默认提供一个 AI Service Bean，兼容应用名称生成等旧代码。
      *
@@ -134,3 +145,4 @@ public class AiCodeGeneratorServiceFactory {
         return service;
     }
 }
+

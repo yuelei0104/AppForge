@@ -46,6 +46,7 @@ class AppWorkspaceTest {
         JdbcDataSource ds = new JdbcDataSource();
         ds.setURL("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
         jdbc = new JdbcTemplate(ds);
+        jdbc.execute("CREATE TABLE chat_memory_summary(appId bigint primary key)");
         jdbc.execute(
                 "CREATE TABLE app(id bigint primary key,appName varchar(256),cover"
                     + " varchar(512),initPrompt text,codeGenType varchar(64),deployKey"
@@ -200,7 +201,10 @@ class AppWorkspaceTest {
         workspace.offline(id, owner);
         assertEquals(404, controller.getDeployIndex(key, request).getStatusCode().value());
         workspace.deploy(id, owner);
+        jdbc.update("INSERT INTO chat_memory_summary(appId) VALUES(?)", id);
         workspace.delete(id, owner);
+        assertEquals(
+                0, jdbc.queryForObject("SELECT COUNT(*) FROM chat_memory_summary", Integer.class));
         assertEquals(404, controller.getDeployIndex(key, request).getStatusCode().value());
         assertEquals(404, controller.getPreviewIndex(id, request).getStatusCode().value());
         assertFalse(Files.exists(root.resolve("code_versions/" + id)));
@@ -278,9 +282,14 @@ class AppWorkspaceTest {
                             String request,
                             String memoryMessage,
                             CodeGenTypeEnum type,
-                            Long appId) {
+                            Long appId,
+                            long currentUserMessageId) {
                         return source;
                     }
+
+                    @Override
+                    public void rememberSuccessfulConversation(
+                            long appId, String user, String ai) {}
                 };
         AppGenerationService gen = new AppGenerationService();
         ReflectionTestUtils.setField(gen, "workspace", workspace);
@@ -359,9 +368,12 @@ class AppWorkspaceTest {
                                 getClass().getClassLoader(),
                                 new Class[] {ChatHistoryService.class},
                                 (p, m, args) -> {
-                                    if (m.getName().equals("addChatMessage")) {
+                                    if (m.getName().equals("addChatMessage")
+                                            || m.getName().equals("appendChatMessage")) {
                                         history.add(args[2] + ":" + args[1]);
-                                        return true;
+                                        return m.getName().equals("appendChatMessage")
+                                                ? Long.valueOf(history.size())
+                                                : Boolean.TRUE;
                                     }
                                     return null;
                                 });
@@ -562,3 +574,4 @@ class AppWorkspaceTest {
         assertTrue(text.contains("超时"), text);
     }
 }
+

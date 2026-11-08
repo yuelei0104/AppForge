@@ -6,6 +6,7 @@ import com.yuelei.appforge.core.parser.CodeParserExecutor;
 import com.yuelei.appforge.core.saver.CodeFileSaverExecutor;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
+import com.yuelei.appforge.service.ChatMemoryService;
 import com.yuelei.appforge.workspace.CancellableCodeStream;
 
 import dev.langchain4j.data.message.AiMessage;
@@ -29,6 +30,7 @@ import java.util.List;
 @Service
 @Slf4j
 public class AiCodeGeneratorFacade {
+    @Resource private ChatMemoryService chatMemoryService;
     @Resource private CancellableCodeStream cancellableCodeStream;
     @Resource private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
@@ -51,34 +53,67 @@ public class AiCodeGeneratorFacade {
      */
     public Flux<String> generateCodeStream(
             String request, String memoryMessage, CodeGenTypeEnum type, Long appId) {
+        return createStream(request, memoryMessage, type, appId, 0L, true);
+    }
+
+    /** 工作台以当前用户消息 ID 限定历史，持久化成功后才更新工作记忆。 */
+    public Flux<String> generateCodeStream(
+            String request,
+            String memoryMessage,
+            CodeGenTypeEnum type,
+            Long appId,
+            long currentUserMessageId) {
+        return createStream(request, memoryMessage, type, appId, currentUserMessageId, false);
+    }
+
+    private Flux<String> createStream(
+            String request,
+            String memoryMessage,
+            CodeGenTypeEnum type,
+            Long appId,
+            long currentUserMessageId,
+            boolean rememberOnComplete) {
         if (type == null)
             return Flux.error(new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码类型"));
 
         MessageWindowChatMemory memory = null;
         String prompt = request;
         if (appId != null && appId > 0) {
+            String compact = null;
             try {
-                // 通过工厂获取实例，触发 Caffeine 缓存和数据库历史加载。
-                memory = aiCodeGeneratorServiceFactory.getChatMemory(appId);
-                prompt = withHistory(memory, request);
-            } catch (RuntimeException error) {
-                // Redis 不可用时仍允许生成，只是本次不带历史上下文。
-                log.warn("读取对话记忆失败，本次不带历史继续生成 appId={}", appId, error);
-                memory = null;
+                compact = chatMemoryService.buildPrompt(appId, currentUserMessageId, request);
+            } catch (RuntimeException unavailable) {
+                log.warn("读取摘要失败，使用原有记忆上下文 appId={}", appId);
             }
+            if (compact != null) prompt = compact;
+            else
+                try {
+                    memory = aiCodeGeneratorServiceFactory.getChatMemory(appId);
+                    prompt = withHistory(memory, request);
+                } catch (RuntimeException error) {
+                    log.warn("读取对话记忆失败，本次不带历史继续生成 appId={}", appId);
+                }
         }
 
         final MessageWindowChatMemory memoryRef = memory;
         final StringBuilder output = new StringBuilder();
-        return cancellableCodeStream
-                .stream(prompt, type)
+        return cancellableCodeStream.stream(prompt, type)
                 .doOnNext(output::append)
                 .doOnComplete(
                         () -> {
-                            if (memoryRef != null) {
+                            if (rememberOnComplete && memoryRef != null) {
                                 remember(memoryRef, memoryMessage, output.toString());
                             }
                         });
+    }
+
+    public void rememberSuccessfulConversation(long appId, String userMessage, String aiResponse) {
+        try {
+            aiCodeGeneratorServiceFactory.refreshChatMemory(appId);
+        } catch (RuntimeException error) {
+            log.warn("本轮已保存，Redis 记忆暂不可用 appId={}", appId);
+        }
+        chatMemoryService.afterConversationSaved(appId);
     }
 
     public File generateAndSaveCode(String message, CodeGenTypeEnum type, Long appId) {
@@ -139,3 +174,4 @@ public class AiCodeGeneratorFacade {
         }
     }
 }
+

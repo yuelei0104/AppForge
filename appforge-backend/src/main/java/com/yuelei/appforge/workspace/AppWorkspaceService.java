@@ -284,6 +284,8 @@ public class AppWorkspaceService {
                                     jdbcTemplate.update(
                                             "DELETE FROM app_version WHERE appId=?", id);
                                     jdbcTemplate.update(
+                                            "DELETE FROM chat_memory_summary WHERE appId=?", id);
+                                    jdbcTemplate.update(
                                             "UPDATE app SET"
                                                 + " isDelete=1,deploymentStatus='OFFLINE',generationToken='',updateTime=?"
                                                 + " WHERE id=?",

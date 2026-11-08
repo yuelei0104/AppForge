@@ -19,3 +19,26 @@ export function listAllChatHistoryByPageForAdmin(body: API.ChatHistoryQueryReque
 export function removeChatHistory(id: string) {
   return request<boolean>(`/chatHistory/remove/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
+
+const chatPath = (appId: string) => `/chatHistory/app/${encodeURIComponent(appId)}`
+export function getChatStatistics(appId: string, signal?: AbortSignal) {
+  return request<{ code: number; message?: string; data?: API.ChatStatistics }>(
+    `${chatPath(appId)}/stats`,
+    { signal },
+  )
+}
+export function getChatMemory(appId: string, signal?: AbortSignal) {
+  return request<{ code: number; message?: string; data?: API.ChatMemory }>(
+    `${chatPath(appId)}/memory`,
+    { signal },
+  )
+}
+export function compressChatMemory(appId: string, signal?: AbortSignal) {
+  return request<{ code: number; message?: string; data?: API.ChatMemory }>(
+    `${chatPath(appId)}/memory/compress`,
+    { method: 'POST', signal },
+  )
+}
+export function exportChatMarkdown(appId: string, signal?: AbortSignal) {
+  return request<Blob>(`${chatPath(appId)}/export`, { responseType: 'blob', signal })
+}

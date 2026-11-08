@@ -28,3 +28,8 @@ API 重新生成时应保留 ID 字段的字符串兼容性。当前提供 `src/
 ## 验证
 
 前端 `npm test`、`npm run build`；后端测试包含 `ChatHistoryIntegrationTest`、`AppWorkspaceTest`、`AppServiceAccessTest`、`AppMetadataTest`、`CancellableCodeStreamTest`。测试使用 H2 和模拟模型，不需要访问真实模型或用户数据库。
+
+
+## 对话扩展
+
+对话轮数、完整 Markdown 导出与智能记忆摘要见 [对话扩展说明](05-chat-conversation-extensions.md)。已有库先执行独立摘要表迁移。

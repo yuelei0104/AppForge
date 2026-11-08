@@ -42,3 +42,22 @@ declare namespace API {
     data?: PageChatHistory
   }
 }
+
+declare namespace API {
+  type ChatStatistics = {
+    roundCount: number | string
+    messageCount: number | string
+    aiMessageCount: number | string
+    lastMessageTime?: string
+  }
+  type ChatMemory = {
+    enabled: boolean
+    running: boolean
+    triggerMessages: number
+    recentMessages: number
+    coveredMessages: number | string
+    summary?: string
+    updatedTime?: string
+    lastError?: string
+  }
+}

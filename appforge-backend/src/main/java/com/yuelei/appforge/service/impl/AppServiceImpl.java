@@ -40,6 +40,7 @@ import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -486,21 +487,21 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 () -> {
                     StringBuilder response = new StringBuilder();
                     AtomicBoolean recorded = new AtomicBoolean();
+                    AtomicLong userMessageId = new AtomicLong();
                     return generation
                             .generate(
                                     app,
                                     message,
                                     () -> {
-                                        ThrowUtils.throwIf(
-                                                !chatHistoryService.addChatMessage(
+                                        userMessageId.set(
+                                                chatHistoryService.appendChatMessage(
                                                         appId,
                                                         message,
                                                         ChatHistoryMessageTypeEnum.USER.getValue(),
-                                                        loginUser.getId()),
-                                                ErrorCode.OPERATION_ERROR,
-                                                "保存用户消息失败");
+                                                        loginUser.getId()));
                                         recorded.set(true);
-                                    })
+                                    },
+                                    userMessageId::get)
                             .doOnNext(response::append)
                             .doOnComplete(
                                     () -> {
@@ -514,6 +515,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                                                             loginUser.getId()),
                                                     ErrorCode.OPERATION_ERROR,
                                                     "保存 AI 消息失败");
+                                            generation.afterConversationSaved(
+                                                    appId, message, response.toString());
                                         }
                                     })
                             .doOnError(
@@ -580,3 +583,4 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return super.removeById(id);
     }
 }
+
