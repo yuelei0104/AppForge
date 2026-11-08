@@ -11,6 +11,7 @@ import request from '@/request'
 import { prependHistory, oldestCursor, updateProgress, type ChatMessage } from '@/utils/chatHistory'
 import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
 import { generationLabel } from '@/utils/appStatus'
+import { generationModeLabel } from '@/utils/generationMode'
 import VersionHistoryDrawer from '@/components/VersionHistoryDrawer.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -786,6 +787,17 @@ onBeforeUnmount(() => {
             >{{ statistics ? `对话 ${statistics.roundCount} 轮` : '轮数待加载' }}</a-tag
           >
         </a-tooltip>
+        <a-tag
+          v-if="app"
+          aria-label="当前生成模式"
+          :color="app.codeGenType === 'vue_project' ? 'purple' : 'default'"
+          :title="
+            app.codeGenType === 'vue_project'
+              ? '构建成功后可下载完整工程'
+              : '此模式生成原生网页；工程下载仅在完整网站工程模式提供'
+          "
+          >{{ generationModeLabel(app.codeGenType) }}</a-tag
+        >
         <a-tag :color="isGenerating ? 'processing' : 'default'"
           >{{ generationLabel(app?.generationStatus)
           }}<template v-if="app?.currentVersion"> · v{{ app.currentVersion }}</template></a-tag
@@ -1093,6 +1105,7 @@ onBeforeUnmount(() => {
 
 .app-chat-page__topbar-left {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   min-width: 0;

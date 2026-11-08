@@ -100,6 +100,7 @@ public class AppGenerationService {
             ThrowUtils.throwIf(changed != 1, ErrorCode.OPERATION_ERROR, "该应用正在生成，请刷新状态");
             // 先认领任务再读取上下文，阻止回退/发布与上下文读取之间发生竞争。
             request = context(workspace.requireApp(id), message);
+            log.info("开始应用生成 appId={}, codeGenType={}", id, app.getCodeGenType());
             onStarted.run();
             if ("vue_project".equals(app.getCodeGenType()))
                 job.project =

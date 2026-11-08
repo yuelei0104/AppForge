@@ -34,7 +34,7 @@ jobs:
         run: docker version
       - name: Build the reviewed real-model project in Docker
         working-directory: appforge-backend
-        run: bash mvnw -B -Dtest=VueProjectRuntimeTest test
+        run: bash mvnw -B -Dtest=VueProjectRuntimeTest,AppCreationModeTest test
       - name: Preserve runtime evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
