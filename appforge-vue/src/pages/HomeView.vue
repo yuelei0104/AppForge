@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { createAppWithMode, listPublicApps, type AppInfo, type AppFilters } from '@/api/workspace'
+import { CodeGenTypeEnum } from '@/config/codeGenType'
 import { generationModeOptions, type GenerationMode } from '@/utils/generationMode'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -36,7 +37,7 @@ const quickPrompts = [
 ]
 
 const prompt = ref('')
-const generationMode = ref<GenerationMode>('vue_project')
+const generationMode = ref<GenerationMode>(CodeGenTypeEnum.VUE_PROJECT)
 const creating = ref(false)
 
 const myApps = ref<AppInfo[]>([])

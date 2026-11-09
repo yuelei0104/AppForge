@@ -1,7 +1,9 @@
+import { CodeGenTypeEnum } from '@/config/codeGenType'
+
 export const generationModeOptions = [
-  { value: 'vue_project', label: '完整网站工程' },
-  { value: 'multi_file', label: '轻量网站' },
-  { value: 'html', label: '单页网站' },
+  { value: CodeGenTypeEnum.VUE_PROJECT, label: '完整网站工程' },
+  { value: CodeGenTypeEnum.MULTI_FILE, label: '轻量网站' },
+  { value: CodeGenTypeEnum.HTML, label: '单页网站' },
 ] as const
 
 export type GenerationMode = (typeof generationModeOptions)[number]['value']

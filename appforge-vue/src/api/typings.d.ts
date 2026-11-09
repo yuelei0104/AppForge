@@ -123,7 +123,7 @@ declare namespace API {
 
   type BaseResponseMapStringString = {
     code?: number
-    data?: Record<string, any>
+    data?: Record<string, string>
     message?: string
   }
 
