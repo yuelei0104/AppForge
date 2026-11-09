@@ -6,6 +6,22 @@
 
 `AppGenerationService` 为每次工程生成建立独立的 `ProjectTask`。`VueProjectRunner` 通过现有工厂建立调用级 AI Service，使用 LangChain4j 原生工具循环；工具实例携带本次目录，不能放入跨请求缓存。历史摘要继续经 `AiCodeGeneratorFacade` 获取，完整会话成功保存后再更新应用记忆。
 
+## 教程中的构建与部署代码放在哪里
+
+当前项目已接入这些能力，不需要将教程片段再次粘贴进处理器或发布方法：
+
+| 教程中的步骤 | 当前实现位置 | 行为 |
+| --- | --- | --- |
+| 工具流结束后执行构建 | `workspace/vue/VueProjectRunner.stream` | `concatWith` 等待 `VueProjectBuilder.build(task)` 完成；构建在 boundedElastic 执行，完成之前不结束生成流 |
+| 安装依赖、打包并收集 dist | `workspace/vue/VueProjectBuilder.build` | 在 Docker 中执行固定命令，校验并收集 `dist/` 产物 |
+| 保存可预览的成功版本 | `workspace/AppGenerationService.finish`、`AppWorkspaceService.complete` | 将源码与产物统一提交为成功版本，随后才能保存成功历史并发送 SSE done |
+| 点击部署 | `service/impl/AppServiceImpl.deployApp` → `AppWorkspaceService.deploy` | 校验并绑定当前成功版本，不重复构建，不移动或修改历史快照 |
+| 预览和部署页面访问 dist | `controller/StaticResourceController.file` | Vue 工程仅提供 `dist/` 下的构建产物；预览读取当前版本，部署读取已发布版本 |
+
+`core/handler/JsonMessageStreamHandler` 只负责将统一消息转换为正文与历史内容，不注入构建器，也不在 `doOnComplete` 中启动脱离生成任务的构建。
+
+`core/builder/VueProjectBuilder` 保留为教程本地构建示例，不注册 Spring Bean；平台唯一构建组件为 `workspace/vue/VueProjectBuilder`。这样避免两个同名 `@Component` 都注册成 `vueProjectBuilder`，也保持现有的停止、构建失败和版本回退行为。
+
 ## 创建模式确认
 
 首页通过 `createAppWithMode` 提交显式的 `codeGenType`，随后读取新应用信息确认实际保存的类型。只有所选模式与返回类型一致才进入对话页并自动生成；不一致、缺少类型或确认失败均明确提示，不自动再次创建应用。对话页顶部显示应用的实际模式；单页和轻量网站提供“下载源码”，Vue 工程提供“下载工程”，尚无成功版本时按钮禁用。已有原生网页及其版本保持原类型。
