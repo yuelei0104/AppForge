@@ -61,62 +61,69 @@ public class CancellableCodeStream {
                 });
     }
 
-    /** 每次订阅最多补齐一次；已有文件保持模型首次返回的内容。 */
+    /** 每个缺失文件独立请求一次，避免 CSS 与 JavaScript 共用一次输出额度。 */
     private Flux<String> completeMissingFiles(String message, String original) {
-        var parser = new MultiFileCodeParser();
-        var files = parser.parseCode(original);
+        var files = new MultiFileCodeParser().parseCode(original);
         if (files.getHtmlCode() == null || files.getHtmlCode().isBlank()) return Flux.empty();
         boolean cssMissing = files.getCssCode() == null || files.getCssCode().isBlank();
         boolean jsMissing = files.getJsCode() == null || files.getJsCode().isBlank();
-        if (!cssMissing && !jsMissing) return Flux.empty();
-        String missing =
-                (cssMissing ? "style.css（css 代码块） " : "")
-                        + (jsMissing ? "script.js（javascript 代码块）" : "");
-        String repairRequest =
-                "本轮用户要求：\n"
-                        + message
-                        + "\n\n首次输出如下，仅作为需要保留的页面上下文：\n"
-                        + original
-                        + "\n\n需要补齐的文件："
-                        + missing
-                        + "\n请仅输出这些缺失文件的完整代码，沿用 HTML 中的类名、ID、结构和功能要求。";
-        StringBuilder repair = new StringBuilder();
-        return Flux.concat(
-                Flux.just("\n\n正在补齐网页样式与交互。\n\n"),
-                request(repairRequest, "prompt/codegen-native-repair-system-prompt.txt")
-                        .doOnNext(chunk -> appendBounded(repair, chunk))
-                        .thenMany(
-                                Flux.defer(
-                                        () -> {
-                                            var completed = parser.parseCode(repair.toString());
-                                            ThrowUtils.throwIf(
-                                                    cssMissing
-                                                                    && (completed.getCssCode()
-                                                                                    == null
-                                                                            || completed
-                                                                                    .getCssCode()
-                                                                                    .isBlank())
-                                                            || jsMissing
-                                                                    && (completed.getJsCode()
-                                                                                    == null
-                                                                            || completed
-                                                                                    .getJsCode()
-                                                                                    .isBlank()),
-                                                    ErrorCode.OPERATION_ERROR,
-                                                    "模型补齐后仍缺少 " + missing + "，未保存此次生成，请重试");
-                                            String result =
-                                                    (cssMissing
-                                                                    ? "\n```css\n"
-                                                                            + completed.getCssCode()
-                                                                            + "\n```\n"
-                                                                    : "")
-                                                            + (jsMissing
-                                                                    ? "\n```javascript\n"
-                                                                            + completed.getJsCode()
-                                                                            + "\n```\n"
-                                                                    : "");
-                                            return Flux.just(result);
-                                        })));
+        StringBuilder context = new StringBuilder(original);
+        Flux<String> css = cssMissing ? completeFile(message, context, "style.css") : Flux.empty();
+        Flux<String> js = jsMissing ? completeFile(message, context, "script.js") : Flux.empty();
+        return css.concatWith(js);
+    }
+
+    private Flux<String> completeFile(String message, StringBuilder context, String name) {
+        return Flux.defer(
+                () -> {
+                    boolean css = name.equals("style.css");
+                    String language = css ? "css" : "javascript";
+                    String repairRequest =
+                            "本轮用户要求：\n"
+                                    + message
+                                    + "\n\n已生成的页面文件如下，仅作为需要保留的上下文：\n"
+                                    + context
+                                    + "\n\n本次唯一需要补齐的文件："
+                                    + name
+                                    + "（"
+                                    + language
+                                    + " 代码块）"
+                                    + "\n只返回这个文件的完整代码，沿用 HTML 中的类名、ID、结构和功能要求。";
+                    StringBuilder repair = new StringBuilder();
+                    return Flux.concat(
+                            Flux.just(
+                                    css
+                                            ? "\n\n正在补齐网页样式（style.css）。\n\n"
+                                            : "\n\n正在补齐网页交互（script.js）。\n\n"),
+                            request(
+                                            repairRequest,
+                                            "prompt/codegen-native-repair-system-prompt.txt",
+                                            "补齐 " + name)
+                                    .doOnNext(chunk -> appendBounded(repair, chunk))
+                                    .thenMany(
+                                            Flux.defer(
+                                                    () -> {
+                                                        var completed =
+                                                                new MultiFileCodeParser()
+                                                                        .parseCode(
+                                                                                repair.toString());
+                                                        String code =
+                                                                css
+                                                                        ? completed.getCssCode()
+                                                                        : completed.getJsCode();
+                                                        ThrowUtils.throwIf(
+                                                                code == null || code.isBlank(),
+                                                                ErrorCode.OPERATION_ERROR,
+                                                                "模型补齐后仍缺少 "
+                                                                        + name
+                                                                        + "，未保存此次生成，请重试");
+                                                        String result =
+                                                                "\n```" + language + "\n" + code
+                                                                        + "\n```\n";
+                                                        appendBounded(context, result);
+                                                        return Flux.just(result);
+                                                    })));
+                });
     }
 
     private static void appendBounded(StringBuilder output, String chunk) {
@@ -128,6 +135,10 @@ public class CancellableCodeStream {
     }
 
     private Flux<String> request(String message, String resource) {
+        return request(message, resource, "生成网页");
+    }
+
+    private Flux<String> request(String message, String resource, String stage) {
         return Flux.defer(
                 () -> {
                     ThrowUtils.throwIf(
@@ -288,7 +299,8 @@ public class CancellableCodeStream {
                                                                                     throw new BusinessException(
                                                                                             ErrorCode
                                                                                                     .OPERATION_ERROR,
-                                                                                            "模型输出达到长度限制，本次不保存，请简化需求后重试");
+                                                                                            stage
+                                                                                                    + "时模型输出达到长度限制，本次不保存，请简化需求后重试");
                                                                                 if (!finish
                                                                                                 .isBlank()
                                                                                         && !"stop"
