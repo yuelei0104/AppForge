@@ -2,6 +2,7 @@ package com.yuelei.appforge.workspace;
 
 import cn.hutool.json.JSONUtil;
 
+import com.yuelei.appforge.core.parser.MultiFileCodeParser;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 
@@ -42,16 +43,97 @@ public class CancellableCodeStream {
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 
     public Flux<String> stream(String message, CodeGenTypeEnum type) {
+        String resource =
+                type == CodeGenTypeEnum.HTML
+                        ? "prompt/codegen-html-system-prompt.txt"
+                        : "prompt/codegen-multi-file-system-prompt.txt";
+        if (type != CodeGenTypeEnum.MULTI_FILE) return request(message, resource);
+        return Flux.defer(
+                () -> {
+                    StringBuilder original = new StringBuilder();
+                    return request(message, resource)
+                            .doOnNext(chunk -> appendBounded(original, chunk))
+                            .concatWith(
+                                    Flux.defer(
+                                            () ->
+                                                    completeMissingFiles(
+                                                            message, original.toString())));
+                });
+    }
+
+    /** 每次订阅最多补齐一次；已有文件保持模型首次返回的内容。 */
+    private Flux<String> completeMissingFiles(String message, String original) {
+        var parser = new MultiFileCodeParser();
+        var files = parser.parseCode(original);
+        if (files.getHtmlCode() == null || files.getHtmlCode().isBlank()) return Flux.empty();
+        boolean cssMissing = files.getCssCode() == null || files.getCssCode().isBlank();
+        boolean jsMissing = files.getJsCode() == null || files.getJsCode().isBlank();
+        if (!cssMissing && !jsMissing) return Flux.empty();
+        String missing =
+                (cssMissing ? "style.css（css 代码块） " : "")
+                        + (jsMissing ? "script.js（javascript 代码块）" : "");
+        String repairRequest =
+                "本轮用户要求：\n"
+                        + message
+                        + "\n\n首次输出如下，仅作为需要保留的页面上下文：\n"
+                        + original
+                        + "\n\n需要补齐的文件："
+                        + missing
+                        + "\n请仅输出这些缺失文件的完整代码，沿用 HTML 中的类名、ID、结构和功能要求。";
+        StringBuilder repair = new StringBuilder();
+        return Flux.concat(
+                Flux.just("\n\n正在补齐网页样式与交互。\n\n"),
+                request(repairRequest, "prompt/codegen-native-repair-system-prompt.txt")
+                        .doOnNext(chunk -> appendBounded(repair, chunk))
+                        .thenMany(
+                                Flux.defer(
+                                        () -> {
+                                            var completed = parser.parseCode(repair.toString());
+                                            ThrowUtils.throwIf(
+                                                    cssMissing
+                                                                    && (completed.getCssCode()
+                                                                                    == null
+                                                                            || completed
+                                                                                    .getCssCode()
+                                                                                    .isBlank())
+                                                            || jsMissing
+                                                                    && (completed.getJsCode()
+                                                                                    == null
+                                                                            || completed
+                                                                                    .getJsCode()
+                                                                                    .isBlank()),
+                                                    ErrorCode.OPERATION_ERROR,
+                                                    "模型补齐后仍缺少 " + missing + "，未保存此次生成，请重试");
+                                            String result =
+                                                    (cssMissing
+                                                                    ? "\n```css\n"
+                                                                            + completed.getCssCode()
+                                                                            + "\n```\n"
+                                                                    : "")
+                                                            + (jsMissing
+                                                                    ? "\n```javascript\n"
+                                                                            + completed.getJsCode()
+                                                                            + "\n```\n"
+                                                                    : "");
+                                            return Flux.just(result);
+                                        })));
+    }
+
+    private static void appendBounded(StringBuilder output, String chunk) {
+        ThrowUtils.throwIf(
+                output.length() + chunk.length() > 2_000_000,
+                ErrorCode.OPERATION_ERROR,
+                "模型输出过长，已停止");
+        output.append(chunk);
+    }
+
+    private Flux<String> request(String message, String resource) {
         return Flux.defer(
                 () -> {
                     ThrowUtils.throwIf(
                             apiKey == null || apiKey.isBlank(),
                             ErrorCode.OPERATION_ERROR,
                             "请配置后端模型 API Key");
-                    String resource =
-                            type == CodeGenTypeEnum.HTML
-                                    ? "prompt/codegen-html-system-prompt.txt"
-                                    : "prompt/codegen-multi-file-system-prompt.txt";
                     String system;
                     try (var input = new ClassPathResource(resource).getInputStream()) {
                         system = new String(input.readAllBytes(), StandardCharsets.UTF_8);

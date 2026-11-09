@@ -58,8 +58,9 @@ public class MultiFileCodeParser implements CodeParser<MultiFileCodeResult> {
      */
     private String extractCodeByPattern(String content, Pattern pattern) {
         Matcher matcher = pattern.matcher(content);
-        if (matcher.find()) {
-            return matcher.group(1);
+        while (matcher.find()) {
+            String code = matcher.group(1);
+            if (!code.isBlank()) return code;
         }
         return null;
     }
