@@ -32,9 +32,9 @@ jobs:
           cache-dependency-path: appforge-backend/pom.xml
       - name: Check real Docker daemon
         run: docker version
-      - name: Build the reviewed real-model project in Docker
+      - name: Verify cache, source downloads and actual Docker builds
         working-directory: appforge-backend
-        run: bash mvnw -B -Dtest=VueProjectRuntimeTest,AppCreationModeTest test
+        run: bash mvnw -B -Dtest=VueProjectRuntimeTest,AppCreationModeTest,AiCodeGeneratorServiceFactoryTest,NativeAssetsTest,NativeSourceDownloadTest test
       - name: Preserve runtime evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -42,5 +42,7 @@ jobs:
           name: vue-runtime-evidence
           path: |
             appforge-backend/target/vue-runtime-evidence
-            appforge-backend/target/surefire-reports/TEST-*VueProjectRuntimeTest.xml
+            appforge-backend/target/surefire-reports/TEST-*.xml
+            appforge-backend/target/native-source-fixture.zip
+            appforge-backend/target/native-preview-fixture
           retention-days: 7

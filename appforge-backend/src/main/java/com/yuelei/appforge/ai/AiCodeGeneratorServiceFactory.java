@@ -19,8 +19,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * AI 代码生成服务工厂（方案 2：每个应用一个 AI Service 实例）。
@@ -45,8 +43,8 @@ public class AiCodeGeneratorServiceFactory {
     @Lazy
     private ChatHistoryService chatHistoryService;
 
-    /** 缓存中的 AiService 与它的对话记忆共用同一个 memory 对象。 */
-    private final Map<Long, MessageWindowChatMemory> serviceMemories = new ConcurrentHashMap<>();
+    /** 服务与记忆按同一条目缓存，淘汰回调不能影响后续创建的实例。 */
+    private record CachedService(AiCodeGeneratorService service, MessageWindowChatMemory memory) {}
 
     /**
      * AI 服务实例缓存策略：
@@ -57,18 +55,16 @@ public class AiCodeGeneratorServiceFactory {
      *   <li>访问后 10 分钟过期</li>
      * </ul>
      */
-    private final Cache<Long, AiCodeGeneratorService> serviceCache =
+    private final Cache<Long, CachedService> serviceCache =
             Caffeine.newBuilder()
                     .maximumSize(1000)
                     .expireAfterWrite(Duration.ofMinutes(30))
                     .expireAfterAccess(Duration.ofMinutes(10))
                     .removalListener(
                             (key, value, cause) -> {
-                                serviceMemories.remove(key);
                                 log.debug("AI 服务实例被移除, appId: {}, 原因: {}", key, cause);
                             })
                     .build();
-
 
     /**
      * 根据 appId 获取对应的 AI 服务实例。
@@ -77,7 +73,7 @@ public class AiCodeGeneratorServiceFactory {
      * @return AI 服务
      */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId) {
-        return serviceCache.get(appId, this::createAiCodeGeneratorService);
+        return serviceCache.get(appId, this::createAiCodeGeneratorService).service();
     }
 
     /**
@@ -87,15 +83,7 @@ public class AiCodeGeneratorServiceFactory {
      * @return 该应用的对话记忆
      */
     public MessageWindowChatMemory getChatMemory(long appId) {
-        getAiCodeGeneratorService(appId);
-        MessageWindowChatMemory memory = serviceMemories.get(appId);
-        if (memory == null) {
-            // 极端情况下缓存实例还在但 memory 已因过期被移除，重新创建一次。
-            serviceCache.invalidate(appId);
-            getAiCodeGeneratorService(appId);
-            memory = serviceMemories.get(appId);
-        }
-        return memory;
+        return serviceCache.get(appId, this::createAiCodeGeneratorService).memory();
     }
 
     /** 文件工具持有调用级工作目录，因此工程服务按次构建，不能缓存到其他调用。 */
@@ -135,7 +123,7 @@ public class AiCodeGeneratorServiceFactory {
      * @param appId 应用 id
      * @return AI 服务
      */
-    private AiCodeGeneratorService createAiCodeGeneratorService(long appId) {
+    private CachedService createAiCodeGeneratorService(long appId) {
         log.info("为 appId: {} 创建新的 AI 服务实例", appId);
         MessageWindowChatMemory chatMemory =
                 MessageWindowChatMemory.builder()
@@ -151,8 +139,7 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(streamingChatModel)
                         .chatMemory(chatMemory)
                         .build();
-        serviceMemories.put(appId, chatMemory);
-        return service;
+        return new CachedService(service, chatMemory);
     }
 }
 

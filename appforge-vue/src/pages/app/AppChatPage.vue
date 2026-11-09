@@ -120,7 +120,7 @@ async function downloadSource() {
     if (sequence !== loadSequence || controller.signal.aborted) return
     if (!String(res.headers['content-type']).includes('application/zip')) {
       const error = JSON.parse(await res.data.text()) as { message?: string }
-      throw new Error(error.message || '工程下载失败')
+      throw new Error(error.message || '源码下载失败')
     }
     const url = URL.createObjectURL(res.data),
       link = document.createElement('a')
@@ -130,7 +130,7 @@ async function downloadSource() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   } catch (error) {
     if (sequence === loadSequence && !controller.signal.aborted)
-      message.error(error instanceof Error ? error.message : '工程下载失败')
+      message.error(error instanceof Error ? error.message : '源码下载失败')
   } finally {
     if (sequence === loadSequence) downloadingSource.value = false
   }
@@ -794,7 +794,7 @@ onBeforeUnmount(() => {
           :title="
             app.codeGenType === 'vue_project'
               ? '构建成功后可下载完整工程'
-              : '此模式生成原生网页；工程下载仅在完整网站工程模式提供'
+              : '此模式可下载原生网页源码；完整网站工程包含独立工程配置'
           "
           >{{ generationModeLabel(app.codeGenType) }}</a-tag
         >
@@ -806,11 +806,11 @@ onBeforeUnmount(() => {
 
       <div class="app-chat-page__topbar-actions">
         <a-button
-          v-if="canManage && app?.codeGenType === 'vue_project'"
+          v-if="canManage"
           :loading="downloadingSource"
-          :disabled="!app.currentVersion"
+          :disabled="!app?.currentVersion"
           @click="downloadSource"
-          >下载工程</a-button
+          >{{ app?.codeGenType === 'vue_project' ? '下载工程' : '下载源码' }}</a-button
         >
         <a-button v-if="canManage" :loading="exporting" @click="handleExport"
           ><template #icon><DownloadOutlined /></template>导出对话</a-button

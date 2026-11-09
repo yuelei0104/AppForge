@@ -236,6 +236,8 @@ public class AppGenerationService {
             files.put("script.js", Objects.toString(multi.getJsCode(), ""));
         }
         AppWorkspaceService.validateFiles(files);
+        files.put("index.html", AppPageRenderer.prepareNativeAssets(files, true));
+        AppWorkspaceService.validateFiles(files);
         return files;
     }
 

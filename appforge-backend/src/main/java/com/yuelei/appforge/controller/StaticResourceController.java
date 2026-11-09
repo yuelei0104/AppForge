@@ -96,6 +96,8 @@ public class StaticResourceController {
         String content = files.get(name);
         if ((privatePage || project) && "index.html".equals(name) && content != null)
             content = AppPageRenderer.inlinePrivateAssets(files);
+        else if ("index.html".equals(name) && content != null)
+            content = AppPageRenderer.prepareNativeAssets(files, false);
         if ((!project && !AppFileStore.FILES.contains(name)) || content == null)
             return ResponseEntity.notFound().build();
         return ResponseEntity.ok()
