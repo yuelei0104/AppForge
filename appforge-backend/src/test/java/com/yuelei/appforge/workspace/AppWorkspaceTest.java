@@ -379,6 +379,7 @@ class AppWorkspaceTest {
                                 });
         ReflectionTestUtils.setField(service, "generation", gen);
         ReflectionTestUtils.setField(service, "chatHistoryService", recorder);
+        ReflectionTestUtils.setField(service, "streamHandlerExecutor", new com.yuelei.appforge.core.handler.StreamHandlerExecutor());
         return service;
     }
 

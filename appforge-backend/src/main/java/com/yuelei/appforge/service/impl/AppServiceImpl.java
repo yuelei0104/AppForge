@@ -52,6 +52,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
+    @Resource private com.yuelei.appforge.core.handler.StreamHandlerExecutor streamHandlerExecutor;
+
     @Resource private AppWorkspaceService workspace;
 
     @Resource private AppGenerationService generation;
@@ -499,8 +501,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     StringBuilder response = new StringBuilder();
                     AtomicBoolean recorded = new AtomicBoolean();
                     AtomicLong userMessageId = new AtomicLong();
-                    return generation
-                            .generate(
+                    var source =
+                            generation.generate(
                                     app,
                                     message,
                                     () -> {
@@ -513,8 +515,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                                         recorded.set(true);
                                     },
                                     userMessageId::get,
-                                    progress)
-                            .doOnNext(response::append)
+                                    progress);
+                    return streamHandlerExecutor
+                            .doExecute(
+                                    source,
+                                    CodeGenTypeEnum.getEnumByValue(app.getCodeGenType()),
+                                    response::append)
                             .doOnComplete(
                                     () -> {
                                         if (!response.isEmpty()) {
@@ -595,5 +601,3 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return super.removeById(id);
     }
 }
-
-

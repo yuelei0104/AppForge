@@ -26,7 +26,8 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
     <!-- 统一管理 langchain4j 版本 -->
-    <langchain4j.version>1.1.0</langchain4j.version>
+    <langchain4j.version>1.11.11</langchain4j.version>
+    <langchain4j.beta.version>1.11.11-beta19</langchain4j.beta.version>
   </properties>
 
   <dependencies>
@@ -101,7 +102,7 @@
     <dependency>
       <groupId>dev.langchain4j</groupId>
       <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
-      <version>1.1.0-beta7</version>
+      <version>${langchain4j.beta.version}</version>
     </dependency>
 
     <dependency>
@@ -120,13 +121,13 @@
     <dependency>
       <groupId>dev.langchain4j</groupId>
       <artifactId>langchain4j-reactor</artifactId>
-      <version>1.1.0-beta7</version>
+      <version>${langchain4j.beta.version}</version>
     </dependency>
 
     <dependency>
       <groupId>dev.langchain4j</groupId>
       <artifactId>langchain4j-community-redis-spring-boot-starter</artifactId>
-      <version>1.1.0-beta7</version>
+      <version>1.11.0-beta19</version>
     </dependency>
 
     <dependency>

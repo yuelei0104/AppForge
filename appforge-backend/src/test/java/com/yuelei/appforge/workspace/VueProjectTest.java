@@ -188,8 +188,8 @@ class VueProjectTest {
                                                                         "content",
                                                                         e.getValue())))
                                         .toList());
-            else message = AiMessage.from("不应展示的模型说明和源码");
-            handler.onPartialResponse("不应展示的 npm install 使用指导");
+            else message = AiMessage.from("文件已写入。");
+            handler.onPartialResponse("我会先创建阅读馆页面。\n");
             handler.onCompleteResponse(
                     ChatResponse.builder()
                             .aiMessage(message)
@@ -314,7 +314,7 @@ class VueProjectTest {
     }
 
     @Test
-    void nativeToolLoopWritesEveryFileAndOnlyStreamsBasicProgress() {
+    void nativeToolLoopStreamsToolMessagesAndKeepsProgressMetadataSeparate() {
         var events = new CopyOnWriteArrayList<GenerationProgress>();
         var model = new ScriptModel();
         var runner = runner(model, successfulBuilder());
@@ -322,13 +322,19 @@ class VueProjectTest {
             String text =
                     String.join(
                             "",
-                            runner.stream(1, 1, "创建阅读网站", task)
+                            new com.yuelei.appforge.core.handler.StreamHandlerExecutor()
+                                    .doExecute(
+                                            runner.stream(1, 1, "创建阅读网站", task),
+                                            com.yuelei.appforge.model.enums.CodeGenTypeEnum
+                                                    .VUE_PROJECT,
+                                            item -> {})
                                     .collectList()
                                     .block(Duration.ofSeconds(10)));
             assertTrue(text.startsWith("我会先"));
             assertTrue(text.endsWith("网站已生成完成。"));
             assertFalse(text.contains("npm"));
-            assertFalse(text.contains("源码"));
+            assertTrue(text.contains("[工具调用] 写入文件 src/App.vue"));
+            assertTrue(text.contains("```vue"));
             assertEquals(11, VueProjectFiles.sources(task.result()).size());
             assertTrue(
                     events.stream()
