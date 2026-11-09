@@ -24,6 +24,7 @@ import com.yuelei.appforge.model.vo.AppVO;
 import com.yuelei.appforge.model.vo.UserVO;
 import com.yuelei.appforge.service.AppService;
 import com.yuelei.appforge.service.ChatHistoryService;
+import com.yuelei.appforge.service.ScreenshotService;
 import com.yuelei.appforge.service.UserService;
 import com.yuelei.appforge.workspace.*;
 
@@ -31,6 +32,7 @@ import jakarta.annotation.Resource;
 
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import reactor.core.publisher.Flux;
@@ -65,6 +67,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource private UserService userService;
 
     @Resource private ChatHistoryService chatHistoryService;
+
+    @Value("${app.screenshot.base-url:http://localhost:8123/api}")
+    private String screenshotBaseUrl;
+
+    @Resource
+    private ScreenshotService screenshotService;
 
     @Override
     public long addApp(AppAddRequest appAddRequest, User loginUser) {
@@ -566,13 +574,56 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 });
     }
 
+//    @Override
+//    public String deployApp(Long appId, User loginUser) {
+//        ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR);
+//        App app = getAppById(appId);
+//        AppPolicy.owner(app, loginUser);
+//        return workspace.deploy(appId, loginUser);
+//    }
     @Override
     public String deployApp(Long appId, User loginUser) {
         ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR);
+
         App app = getAppById(appId);
         AppPolicy.owner(app, loginUser);
-        return workspace.deploy(appId, loginUser);
+
+        // 1. 部署成功，获得部署标识
+        String deployKey = workspace.deploy(appId, loginUser);
+
+        // 2. 拼接截图程序能够访问的网站地址
+        String appDeployUrl = screenshotBaseUrl.replaceAll("/+$", "")
+            + "/deploy/" + deployKey + "/";
+
+        // 3. 异步截图、上传 COS，并更新应用封面
+        generateAppScreenshotAsync(appId, appDeployUrl);
+
+        // 4. 保持现有接口的返回约定
+        return deployKey;
     }
+
+
+    /**
+     * 异步生成应用截图并更新封面
+     *
+     * @param appId  应用ID
+     * @param appUrl 应用访问URL
+     */
+    @Override
+    public void generateAppScreenshotAsync(Long appId, String appUrl) {
+        // 使用虚拟线程异步执行
+        Thread.startVirtualThread(() -> {
+            // 调用截图服务生成截图并上传
+            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+            // 更新应用封面字段
+            App updateApp = new App();
+            updateApp.setId(appId);
+            updateApp.setCover(screenshotUrl);
+            boolean updated = this.updateById(updateApp);
+            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+        });
+    }
+
 
     /**
      * 删除应用时关联删除对话历史

@@ -73,5 +73,14 @@ logging:
   level:
     dev.langchain4j: DEBUG
 
+cos:
+  client:
+    host: https://appforge-1317627961.cos.ap-shanghai.myqcloud.com
+    secretId: ${COS_SECRET_ID}
+    secretKey: ${COS_SECRET_KEY}
+    region: ap-shanghai
+    bucket: appforge-1317627961
 
-
+app:
+  screenshot:
+    base-url: http://localhost:8123/api
