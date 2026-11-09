@@ -28,7 +28,7 @@
 
 ## 生成与流式错误
 
-当前依赖的 LangChain4j 1.1 Reactor 适配器只转发 token，没有取消模型传输的钩子。因此应用生成流使用独立的可取消 HTTP SSE 通道，沿用后端 `langchain4j.open-ai.streaming-chat-model` 的地址、Key、模型、token 限制与 reasoning 配置；非流式结构化生成和 AI 命名继续使用 LangChain4j。
+原生 HTML/轻量网站生成继续使用独立的可取消 HTTP SSE 通道，保留已验证的缺失文件补齐与连接取消能力，沿用后端 `langchain4j.open-ai.streaming-chat-model` 的地址、Key、模型、token 限制与 reasoning 配置；非流式结构化生成和 AI 命名继续使用 LangChain4j。
 
 传输会处理 UTF-8 分片、`[DONE]`、长度截断、连接错误和 120 秒无正文超时。MVC 使用 `SseEmitter` 输出 UTF-8 的 `message`、`done`、`stopped`、`generation-error` 事件，错误不再尝试通过普通 JSON 异常处理器写入 SSE。关闭模型连接不能保证供应商停止计费，具体由供应商决定。
 
