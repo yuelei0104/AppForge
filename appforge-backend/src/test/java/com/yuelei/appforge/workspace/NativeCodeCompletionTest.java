@@ -11,6 +11,8 @@ import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import reactor.core.publisher.Flux;
@@ -33,6 +35,8 @@ class NativeCodeCompletionTest {
     static final String FIRST = "```html\n" + HTML + "\n```";
     static final String CSS = "body{color:#123456} #articleList{display:grid}";
     static final String JS = "document.getElementById('articleList').textContent='示例文章';";
+    static final String CSS_REPLY = "```css\n" + CSS + "\n```";
+    static final String JS_REPLY = "```javascript\n" + JS + "\n```";
     static final String REPAIR = "```css\n" + CSS + "\n```\n```javascript\n" + JS + "\n```";
     @TempDir Path root;
     HttpServer server;
@@ -112,7 +116,7 @@ class NativeCodeCompletionTest {
 
     @Test
     void htmlOnlyReplyIsCompletedBeforeOneSuccessfulVersionIsSaved() {
-        serve(FIRST, REPAIR);
+        serve(FIRST, CSS_REPLY, JS_REPLY);
         var f = workspace();
         var source = stream.stream("个人博客，支持搜索与示例文章", CodeGenTypeEnum.MULTI_FILE);
         f.generation(source)
@@ -124,7 +128,7 @@ class NativeCodeCompletionTest {
         assertTrue(saved.get("index.html").contains("searchInput"));
         assertEquals(1, f.workspace.versions(f.id, f.owner).size());
         assertEquals("SUCCEEDED", f.workspace.requireApp(f.id).getGenerationStatus());
-        assertEquals(2, calls.get());
+        assertEquals(3, calls.get());
         assertTrue(
                 requests.get(0)
                         .getJSONArray("messages")
@@ -135,6 +139,19 @@ class NativeCodeCompletionTest {
         assertTrue(repairMessages.getJSONObject(0).getStr("content").contains("不返回 HTML"));
         assertTrue(repairMessages.getJSONObject(1).getStr("content").contains(HTML));
         assertTrue(repairMessages.getJSONObject(1).getStr("content").contains("个人博客，支持搜索与示例文章"));
+        String cssRequest = repairMessages.getJSONObject(1).getStr("content");
+        assertTrue(
+                cssRequest.substring(cssRequest.lastIndexOf("本次唯一需要补齐的文件：")).contains("style.css"));
+        assertFalse(
+                cssRequest.substring(cssRequest.lastIndexOf("本次唯一需要补齐的文件：")).contains("script.js"));
+        String jsRequest =
+                requests.get(2).getJSONArray("messages").getJSONObject(1).getStr("content");
+        assertTrue(jsRequest.contains(CSS));
+        assertTrue(
+                jsRequest.substring(jsRequest.lastIndexOf("本次唯一需要补齐的文件：")).contains("script.js"));
+        assertFalse(
+                jsRequest.substring(jsRequest.lastIndexOf("本次唯一需要补齐的文件：")).contains("style.css"));
+        for (var request : requests) assertEquals(8192, request.getInt("max_tokens"));
     }
 
     @Test
@@ -146,21 +163,21 @@ class NativeCodeCompletionTest {
 
     @Test
     void emptyInitialCodeBlocksDoNotHideTheCompletedFiles() {
-        serve(FIRST + "\n```css\n \n```\n```javascript\n\n```", REPAIR);
+        serve(FIRST + "\n```css\n \n```\n```javascript\n\n```", CSS_REPLY, JS_REPLY);
         var files =
                 AppGenerationService.parse(
                         generated(stream.stream("博客", CodeGenTypeEnum.MULTI_FILE)), "multi_file");
         assertEquals(CSS, files.get("style.css"));
         assertEquals(JS, files.get("script.js"));
-        assertEquals(2, calls.get());
+        assertEquals(3, calls.get());
     }
 
     @Test
     void eachSubscriptionHasItsOwnCompletionBuffer() {
-        serve(FIRST, REPAIR, FIRST, REPAIR);
+        serve(FIRST, CSS_REPLY, JS_REPLY, FIRST, CSS_REPLY, JS_REPLY);
         var source = stream.stream("博客", CodeGenTypeEnum.MULTI_FILE);
         assertEquals(generated(source), generated(source));
-        assertEquals(4, calls.get());
+        assertEquals(6, calls.get());
     }
 
     @Test
@@ -187,10 +204,63 @@ class NativeCodeCompletionTest {
                                 f.generation(stream.stream("博客", CodeGenTypeEnum.MULTI_FILE))
                                         .generate(f.workspace.requireApp(f.id), "创建")
                                         .blockLast(Duration.ofSeconds(8)));
-        assertTrue(error.getMessage().contains("长度限制"));
+        assertTrue(error.getMessage().contains("补齐 style.css时模型输出达到长度限制"));
         assertEquals(2, calls.get());
         assertEquals(0, f.workspace.requireApp(f.id).getCurrentVersion());
         assertEquals(0, f.workspace.versions(f.id, f.owner).size());
+    }
+
+    @Test
+    void truncatedJavascriptDoesNotSaveTheEarlierCompletedStylesheet() {
+        server.createContext(
+                "/chat/completions",
+                exchange -> {
+                    exchange.getRequestBody().readAllBytes();
+                    int index = calls.getAndIncrement();
+                    exchange.sendResponseHeaders(200, 0);
+                    try (var out = exchange.getResponseBody()) {
+                        String content = index == 0 ? FIRST : index == 1 ? CSS_REPLY : JS_REPLY;
+                        out.write(
+                                (event(content, index < 2 ? "stop" : "length") + "data: [DONE]\n\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                    }
+                });
+        server.start();
+        var f = workspace();
+        f.snapshot("before", "<h1>原来的成功版本</h1>");
+        var before = f.workspace.files(f.id, 1);
+        var error =
+                assertThrows(
+                        BusinessException.class,
+                        () ->
+                                f.generation(stream.stream("更新", CodeGenTypeEnum.MULTI_FILE))
+                                        .generate(f.workspace.requireApp(f.id), "更新")
+                                        .blockLast(Duration.ofSeconds(8)));
+        assertTrue(error.getMessage().contains("补齐 script.js时模型输出达到长度限制"));
+        assertEquals(3, calls.get());
+        assertEquals(before, f.workspace.files(f.id, 1));
+        assertEquals(1, f.workspace.versions(f.id, f.owner).size());
+        assertEquals(1, f.workspace.requireApp(f.id).getCurrentVersion());
+    }
+
+    @Test
+    void cancellationBetweenFilesDoesNotRequestJavascript() {
+        serve(FIRST, CSS_REPLY, JS_REPLY);
+        stream.stream("博客", CodeGenTypeEnum.MULTI_FILE)
+                .takeUntil(chunk -> chunk.contains("```css"))
+                .blockLast(Duration.ofSeconds(8));
+        assertEquals(2, calls.get());
+    }
+
+    @Test
+    void onlyMissingStylesheetIsRequestedAndExistingJavascriptIsPreserved() {
+        serve(FIRST + "\n" + JS_REPLY, CSS_REPLY);
+        var files =
+                AppGenerationService.parse(
+                        generated(stream.stream("博客", CodeGenTypeEnum.MULTI_FILE)), "multi_file");
+        assertEquals(CSS, files.get("style.css"));
+        assertEquals(JS, files.get("script.js"));
+        assertEquals(2, calls.get());
     }
 
     @Test
@@ -216,7 +286,7 @@ class NativeCodeCompletionTest {
                                         .getJSONArray("messages")
                                         .getJSONObject(1)
                                         .getStr("content")
-                                        .lastIndexOf("需要补齐的文件："))
+                                        .lastIndexOf("本次唯一需要补齐的文件："))
                         .contains("style.css"));
         assertEquals(2, calls.get());
     }
@@ -264,8 +334,10 @@ class NativeCodeCompletionTest {
         assertEquals(1, calls.get());
     }
 
-    @Test
-    void cancellationDuringRepairClosesTheProviderConnection() throws Exception {
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void cancellationDuringEitherRepairClosesTheProviderConnection(int repairingCall)
+            throws Exception {
         CountDownLatch started = new CountDownLatch(1), closed = new CountDownLatch(1);
         server.createContext(
                 "/chat/completions",
@@ -277,6 +349,10 @@ class NativeCodeCompletionTest {
                         if (index == 0) {
                             out.write(
                                     (event(FIRST, "stop") + "data: [DONE]\n\n")
+                                            .getBytes(StandardCharsets.UTF_8));
+                        } else if (index < repairingCall) {
+                            out.write(
+                                    (event(CSS_REPLY, "stop") + "data: [DONE]\n\n")
                                             .getBytes(StandardCharsets.UTF_8));
                         } else {
                             started.countDown();
@@ -300,7 +376,7 @@ class NativeCodeCompletionTest {
             assertTrue(started.await(5, TimeUnit.SECONDS));
             subscription.dispose();
             assertTrue(closed.await(5, TimeUnit.SECONDS), "补齐请求必须随停止关闭实际 HTTP 流");
-            assertEquals(2, calls.get());
+            assertEquals(repairingCall + 1, calls.get());
         } finally {
             subscription.dispose();
         }
