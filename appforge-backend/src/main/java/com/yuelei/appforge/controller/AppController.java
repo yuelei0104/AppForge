@@ -109,21 +109,28 @@ public class AppController {
         var app = workspace.requireApp(appId);
         AppPolicy.manage(app, userService.getLoginUser(request));
         ThrowUtils.throwIf(
-                !"vue_project".equals(app.getCodeGenType())
-                        || app.getCurrentVersion() == null
-                        || app.getCurrentVersion() < 1,
+                app.getCurrentVersion() == null || app.getCurrentVersion() < 1,
                 ErrorCode.OPERATION_ERROR,
-                "暂无可下载的工程");
+                "暂无可下载的源码");
         var files =
                 workspace.versionFiles(
                         appId, app.getCurrentVersion(), userService.getLoginUser(request));
+        if (!"vue_project".equals(app.getCodeGenType())) {
+            files = new java.util.LinkedHashMap<>(files);
+            files.put("index.html", AppPageRenderer.prepareNativeAssets(files, false));
+        }
         var bytes = new java.io.ByteArrayOutputStream();
         try (var zip =
                 new java.util.zip.ZipOutputStream(bytes, java.nio.charset.StandardCharsets.UTF_8)) {
             for (var entry : files.entrySet()) {
-                String path =
-                        com.yuelei.appforge.workspace.vue.VueProjectFiles.sourcePath(
-                                entry.getKey());
+                String path = entry.getKey();
+                if ("vue_project".equals(app.getCodeGenType()))
+                    com.yuelei.appforge.workspace.vue.VueProjectFiles.sourcePath(path);
+                else
+                    ThrowUtils.throwIf(
+                            !AppFileStore.FILES.contains(path),
+                            ErrorCode.OPERATION_ERROR,
+                            "源码包含不支持的文件");
                 zip.putNextEntry(new java.util.zip.ZipEntry(path));
                 zip.write(entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 zip.closeEntry();

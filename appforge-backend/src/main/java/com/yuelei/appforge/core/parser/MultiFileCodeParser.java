@@ -12,9 +12,20 @@ import java.util.regex.Pattern;
  */
 public class MultiFileCodeParser implements CodeParser<MultiFileCodeResult> {
 
-    private static final Pattern HTML_CODE_PATTERN = Pattern.compile("```html\\s*\\n([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
-    private static final Pattern CSS_CODE_PATTERN = Pattern.compile("```css\\s*\\n([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
-    private static final Pattern JS_CODE_PATTERN = Pattern.compile("```(?:js|javascript)\\s*\\n([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HTML_CODE_PATTERN =
+            Pattern.compile(
+                    "```html(?:[\\t ]+index\\.html)?[\\t ]*\\r?\\n([\\s\\S]*?)```",
+                    Pattern.CASE_INSENSITIVE);
+    private static final Pattern CSS_CODE_PATTERN =
+            Pattern.compile(
+                    "```css(?:[\\t ]+styles?\\.css)?[\\t ]*\\r?\\n([\\s\\S]*?)```",
+                    Pattern.CASE_INSENSITIVE);
+    private static final Pattern JS_CODE_PATTERN =
+            Pattern.compile(
+                    "```(?:js|javascript)(?:[\\t ]+(?:script|main|app)\\.js)?[\\t ]*\\r"
+                        + "?\\n"
+                        + "([\\s\\S]*?)```",
+                    Pattern.CASE_INSENSITIVE);
 
     @Override
     public MultiFileCodeResult parseCode(String codeContent) {
