@@ -2,13 +2,15 @@ package com.yuelei.appforge.core.builder;
 
 import cn.hutool.core.util.RuntimeUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 保留的教程本地构建示例，不注册为 Spring 组件。
+ * 平台工程构建统一由 workspace.vue.VueProjectBuilder 随生成任务执行。
+ */
 @Slf4j
-@Component
 public class VueProjectBuilder {
     /**
      * 执行命令
