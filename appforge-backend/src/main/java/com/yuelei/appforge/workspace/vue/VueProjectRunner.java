@@ -16,7 +16,8 @@ import reactor.core.scheduler.Schedulers;
 public class VueProjectRunner {
     @Resource private AiCodeGeneratorServiceFactory factory;
     @Resource private AiCodeGeneratorFacade facade;
-    @Resource private StreamingChatModel streamingChatModel;
+    @Resource(name = "reasoningStreamingChatModel")
+    private StreamingChatModel streamingChatModel;
     @Resource private VueProjectBuilder builder;
 
     public Flux<String> stream(

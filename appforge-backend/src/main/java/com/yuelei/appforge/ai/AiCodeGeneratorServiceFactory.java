@@ -33,7 +33,7 @@ public class AiCodeGeneratorServiceFactory {
     @Resource
     private ChatModel chatModel;
 
-    @Resource
+    @Resource(name = "openAiStreamingChatModel")
     private StreamingChatModel streamingChatModel;
 
     @Resource
