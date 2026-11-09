@@ -68,7 +68,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource private ChatHistoryService chatHistoryService;
 
-    @Value("${app.screenshot.base-url:http://localhost:8123/api}")
+    @Value("${app.screenshot.base-url:http://127.0.0.1:8123/api}")
     private String screenshotBaseUrl;
 
     @Resource
@@ -613,14 +613,25 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     public void generateAppScreenshotAsync(Long appId, String appUrl) {
         // 使用虚拟线程异步执行
         Thread.startVirtualThread(() -> {
-            // 调用截图服务生成截图并上传
-            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
-            // 更新应用封面字段
-            App updateApp = new App();
-            updateApp.setId(appId);
-            updateApp.setCover(screenshotUrl);
-            boolean updated = this.updateById(updateApp);
-            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+            try {
+                // 调用截图服务生成截图并上传
+                String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+                if (StrUtil.isBlank(screenshotUrl)) {
+                    log.warn("封面生成失败，保留原封面 appId={}, url={}", appId, appUrl);
+                    return;
+                }
+                // 更新应用封面字段
+                App updateApp = new App();
+                updateApp.setId(appId);
+                updateApp.setCover(screenshotUrl);
+                boolean updated = this.updateById(updateApp);
+                if (!updated) {
+                    log.warn("封面更新失败 appId={}, cover={}", appId, screenshotUrl);
+                }
+            } catch (RuntimeException e) {
+                // 异步线程不能抛出未捕获异常；失败时保留原封面。
+                log.warn("生成应用封面失败 appId={}, url={}", appId, appUrl, e);
+            }
         });
     }
 

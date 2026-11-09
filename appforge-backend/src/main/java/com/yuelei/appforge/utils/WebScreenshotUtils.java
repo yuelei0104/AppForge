@@ -18,13 +18,24 @@ import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.io.File;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.UUID;
 
 @Slf4j
 public class WebScreenshotUtils {
 
     private static final WebDriver webDriver;
+
+    private static final HttpClient httpClient =
+            HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build();
 
     static {
         final int DEFAULT_WIDTH = 1600;
@@ -42,29 +53,20 @@ public class WebScreenshotUtils {
      */
     private static WebDriver initChromeDriver(int width, int height) {
         try {
-            // 自动管理 ChromeDriver
             WebDriverManager.chromedriver().setup();
-            // 配置 Chrome 选项
             ChromeOptions options = new ChromeOptions();
-            // 无头模式
             options.addArguments("--headless");
-            // 禁用GPU（在某些环境下避免问题）
             options.addArguments("--disable-gpu");
-            // 禁用沙盒模式（Docker环境需要）
             options.addArguments("--no-sandbox");
-            // 禁用开发者shm使用
             options.addArguments("--disable-dev-shm-usage");
-            // 设置窗口大小
+            options.addArguments("--no-proxy-server");
             options.addArguments(String.format("--window-size=%d,%d", width, height));
-            // 禁用扩展
             options.addArguments("--disable-extensions");
-            // 设置用户代理
-            options.addArguments("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-            // 创建驱动
+            options.addArguments(
+                    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                            + " (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
             WebDriver driver = new ChromeDriver(options);
-            // 设置页面加载超时
             driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(30));
-            // 设置隐式等待
             driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
             return driver;
         } catch (Exception e) {
@@ -72,9 +74,7 @@ public class WebScreenshotUtils {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "初始化 Chrome 浏览器失败");
         }
     }
-    /**
-     * 保存图片到文件
-     */
+
     private static void saveImage(byte[] imageBytes, String imagePath) {
         try {
             FileUtil.writeBytes(imageBytes, imagePath);
@@ -83,37 +83,29 @@ public class WebScreenshotUtils {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "保存图片失败");
         }
     }
-    /**
-     * 压缩图片
-     */
+
     private static void compressImage(String originalImagePath, String compressedImagePath) {
-        // 压缩图片质量（0.1 = 10% 质量）
-        final float COMPRESSION_QUALITY = 0.3f;
+        final float compressionQuality = 0.3f;
         try {
             ImgUtil.compress(
-                FileUtil.file(originalImagePath),
-                FileUtil.file(compressedImagePath),
-                COMPRESSION_QUALITY
-            );
+                    FileUtil.file(originalImagePath),
+                    FileUtil.file(compressedImagePath),
+                    compressionQuality);
         } catch (Exception e) {
             log.error("压缩图片失败: {} -> {}", originalImagePath, compressedImagePath, e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "压缩图片失败");
         }
     }
 
-    /**
-     * 等待页面加载完成
-     */
     private static void waitForPageLoad(WebDriver driver) {
         try {
-            // 创建等待页面加载对象
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-            // 等待 document.readyState 为complete
-            wait.until(webDriver ->
-                ((JavascriptExecutor) webDriver).executeScript("return document.readyState")
-                    .equals("complete")
-            );
-            // 额外等待一段时间，确保动态内容加载完成
+            wait.until(
+                    webDriver ->
+                            "complete"
+                                    .equals(
+                                            ((JavascriptExecutor) webDriver)
+                                                    .executeScript("return document.readyState")));
             Thread.sleep(2000);
             log.info("页面加载完成");
         } catch (Exception e) {
@@ -122,40 +114,103 @@ public class WebScreenshotUtils {
     }
 
     /**
-     * 生成网页截图
+     * 截图前先确认页面真实可访问，避免把 Chrome 的 ERR_CONNECTION_REFUSED 错误页当成封面。
+     */
+    private static boolean isPageReachable(String webUrl) {
+        try {
+            HttpRequest request =
+                    HttpRequest.newBuilder(URI.create(webUrl))
+                            .timeout(Duration.ofSeconds(10))
+                            .GET()
+                            .build();
+            HttpResponse<Void> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            boolean ok = response.statusCode() >= 200 && response.statusCode() < 400;
+            if (!ok) {
+                log.warn("网页不可访问，跳过截图: {}, status={}", webUrl, response.statusCode());
+            }
+            return ok;
+        } catch (Exception e) {
+            log.warn("网页不可访问，跳过截图: {}, error={}", webUrl, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 检查 Chrome 是否显示了“无法访问此网站”等错误页。
+     */
+    private static boolean isErrorPage(WebDriver driver) {
+        try {
+            String title = driver.getTitle();
+            String source = driver.getPageSource();
+            String content =
+                    ((title == null ? "" : title) + "\n" + (source == null ? "" : source))
+                            .toLowerCase(Locale.ROOT);
+            return content.contains("err_connection")
+                    || content.contains("err_name")
+                    || content.contains("err_timed_out")
+                    || content.contains("this site can't be reached")
+                    || content.contains("this site can’t be reached")
+                    || content.contains("无法访问此网站")
+                    || content.contains("找不到 localhost")
+                    || content.contains("拒绝连接")
+                    || content.contains("connection refused");
+        } catch (Exception e) {
+            log.warn("检查页面错误页失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 生成网页截图。
      *
      * @param webUrl 网页URL
-     * @return 压缩后的截图文件路径，失败返回null
+     * @return 压缩后的截图文件路径，失败返回 null
      */
-    public static String saveWebPageScreenshot(String webUrl) {
+    public static synchronized String saveWebPageScreenshot(String webUrl) {
         if (StrUtil.isBlank(webUrl)) {
             log.error("网页URL不能为空");
             return null;
         }
+        // 先做一次 HTTP 探测。部署刚完成或服务重启时，直接截图会把错误页存成封面。
+        if (!isPageReachable(webUrl)) {
+            return null;
+        }
         try {
-            // 创建临时目录
-            String rootPath = System.getProperty("user.dir") + File.separator + "tmp" + File.separator + "screenshots"
-                + File.separator + UUID.randomUUID().toString().substring(0, 8);
+            String rootPath =
+                    System.getProperty("user.dir")
+                            + File.separator
+                            + "tmp"
+                            + File.separator
+                            + "screenshots"
+                            + File.separator
+                            + UUID.randomUUID().toString().substring(0, 8);
             FileUtil.mkdir(rootPath);
-            // 图片后缀
-            final String IMAGE_SUFFIX = ".png";
-            // 原始截图文件路径
-            String imageSavePath = rootPath + File.separator + RandomUtil.randomNumbers(5) + IMAGE_SUFFIX;
-            // 访问网页
+            final String imageSuffix = ".png";
+            String imageSavePath =
+                    rootPath + File.separator + RandomUtil.randomNumbers(5) + imageSuffix;
+
             webDriver.get(webUrl);
-            // 等待页面加载完成
+            if (isErrorPage(webDriver)) {
+                log.warn("页面加载结果为错误页，跳过截图: {}", webUrl);
+                return null;
+            }
             waitForPageLoad(webDriver);
-            // 截图
-            byte[] screenshotBytes = ((TakesScreenshot) webDriver).getScreenshotAs(OutputType.BYTES);
-            // 保存原始图片
+            if (isErrorPage(webDriver)) {
+                log.warn("页面等待后仍为错误页，跳过截图: {}", webUrl);
+                return null;
+            }
+
+            byte[] screenshotBytes =
+                    ((TakesScreenshot) webDriver).getScreenshotAs(OutputType.BYTES);
             saveImage(screenshotBytes, imageSavePath);
             log.info("原始截图保存成功: {}", imageSavePath);
-            // 压缩图片
-            final String COMPRESSION_SUFFIX = "_compressed.jpg";
-            String compressedImagePath = rootPath + File.separator + RandomUtil.randomNumbers(5) + COMPRESSION_SUFFIX;
+
+            final String compressionSuffix = "_compressed.jpg";
+            String compressedImagePath =
+                    rootPath + File.separator + RandomUtil.randomNumbers(5) + compressionSuffix;
             compressImage(imageSavePath, compressedImagePath);
             log.info("压缩图片保存成功: {}", compressedImagePath);
-            // 删除原始图片，只保留压缩图片
             FileUtil.del(imageSavePath);
             return compressedImagePath;
         } catch (Exception e) {
@@ -163,7 +218,4 @@ public class WebScreenshotUtils {
             return null;
         }
     }
-
-
 }
-

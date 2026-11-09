@@ -51,7 +51,8 @@ public class StaticResourceController {
             HttpServletRequest request) {
         try {
             App app = workspace.byDeployKey(deployKey);
-            if (!AppPolicy.canRead(app, viewer(request))) return ResponseEntity.notFound().build();
+            // 部署链接本身是分享入口，deployKey 已经是不可猜测的访问凭证；
+            // 不能再按应用私有可见性拦截，否则截图服务和访客都无法打开部署页。
             return file(workspace.deployedFiles(app), fileName, !AppPolicy.isPublic(app));
         } catch (BusinessException e) {
             return ResponseEntity.notFound().build();

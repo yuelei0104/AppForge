@@ -83,4 +83,4 @@ cos:
 
 app:
   screenshot:
-    base-url: http://localhost:8123/api
+    base-url: http://127.0.0.1:8123/api
