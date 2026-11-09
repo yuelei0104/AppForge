@@ -54,6 +54,27 @@ public final class ProjectTask implements AutoCloseable {
         ThrowUtils.throwIf(Instant.now().isAfter(deadline), ErrorCode.OPERATION_ERROR, "工程生成超时");
     }
 
+    private final AtomicReference<dev.langchain4j.model.chat.response.StreamingHandle> streaming =
+            new AtomicReference<>();
+
+    public boolean isCancelled() {
+        return cancelled.get();
+    }
+
+    public void streaming(dev.langchain4j.model.chat.response.StreamingHandle handle) {
+        streaming.set(handle);
+        if (cancelled.get()) {
+            var active = streaming.getAndSet(null);
+            if (active != null) active.cancel();
+        }
+    }
+
+    public synchronized String source(String path) {
+        check();
+        VueProjectFiles.sourcePath(path);
+        return files.get(path);
+    }
+
     public void event(String id, String operation, String path, String state, String message) {
         check();
         progress.accept(new GenerationProgress(id, operation, path, state, message));
@@ -173,6 +194,8 @@ public final class ProjectTask implements AutoCloseable {
 
     public void cancel() {
         cancelled.set(true);
+        var handle = streaming.getAndSet(null);
+        if (handle != null) handle.cancel();
         Process active = process.get();
         if (active != null) active.destroyForcibly();
     }

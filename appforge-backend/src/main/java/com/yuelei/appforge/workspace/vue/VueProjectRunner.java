@@ -21,52 +21,38 @@ public class VueProjectRunner {
 
     public Flux<String> stream(
             long appId, long currentMessageId, String request, ProjectTask task) {
-        return Flux.create(
-                sink -> {
-                    sink.onCancel(task::cancel);
-                    sink.next("我会先安排页面结构，再逐个创建页面和组件，完成网站生成。\n\n");
-                    try {
-                        String prompt = facade.contextForProject(request, appId, currentMessageId);
-                        var service =
-                                factory.vueProjectService(
-                                        new VueProjectTools(task),
-                                        new BudgetedStreamingModel(streamingChatModel, task));
-                        service.generate(prompt)
-                                .onPartialResponse(
-                                        text -> {
-                                            /* 文件内容只经工具写入，不混入可见回复。 */
-                                        })
-                                .onToolExecuted(
-                                        tool -> {
-                                            if (!sink.isCancelled()) sink.next("");
-                                        })
-                                .onCompleteResponse(
-                                        response ->
-                                                Schedulers.boundedElastic()
-                                                        .schedule(
+        return Flux.defer(
+                () -> {
+                    String prompt = facade.contextForProject(request, appId, currentMessageId);
+                    var service =
+                            factory.vueProjectService(
+                                    new VueProjectTools(task),
+                                    new BudgetedStreamingModel(streamingChatModel, task));
+                    return com.yuelei.appforge.core.adapter.TokenStreamFluxAdapter.adapt(
+                                    service.generate(prompt), task)
+                            .concatWith(
+                                    Flux.defer(
+                                            () -> {
+                                                task.check();
+                                                return reactor.core.publisher.Mono.fromCallable(
                                                                 () -> {
-                                                                    try {
-                                                                        task.check();
-                                                                        var runtime =
-                                                                                builder.build(task);
-                                                                        task.complete(runtime);
-                                                                        if (!sink.isCancelled()) {
-                                                                            sink.next("网站已生成完成。");
-                                                                            sink.complete();
-                                                                        }
-                                                                    } catch (Throwable error) {
-                                                                        if (!sink.isCancelled())
-                                                                            sink.error(error);
-                                                                    }
-                                                                }))
-                                .onError(
-                                        error -> {
-                                            if (!sink.isCancelled()) sink.error(error);
-                                        })
-                                .start();
-                    } catch (Throwable error) {
-                        sink.error(error);
-                    }
+                                                                    task.check();
+                                                                    task.complete(
+                                                                            builder.build(task));
+                                                                    return cn.hutool.json.JSONUtil
+                                                                            .toJsonStr(
+                                                                                    new com.yuelei
+                                                                                            .appforge
+                                                                                            .ai
+                                                                                            .model
+                                                                                            .message
+                                                                                            .AiResponseMessage(
+                                                                                            "\n"
+                                                                                                + "网站已生成完成。"));
+                                                                })
+                                                        .subscribeOn(Schedulers.boundedElastic());
+                                            }))
+                            .doOnCancel(task::cancel);
                 });
     }
 

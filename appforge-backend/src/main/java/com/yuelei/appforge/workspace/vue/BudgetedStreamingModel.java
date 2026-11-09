@@ -51,6 +51,40 @@ final class BudgetedStreamingModel implements StreamingChatModel {
                     }
 
                     @Override
+                    public void onPartialResponse(
+                            PartialResponse text, PartialResponseContext context) {
+                        task.streaming(context.streamingHandle());
+                        if (!ended.get() && !task.cancelled.get())
+                            handler.onPartialResponse(text, context);
+                    }
+
+                    @Override
+                    public void onPartialToolCall(PartialToolCall call) {
+                        if (!ended.get() && !task.cancelled.get()) handler.onPartialToolCall(call);
+                    }
+
+                    @Override
+                    public void onPartialToolCall(
+                            PartialToolCall call, PartialToolCallContext context) {
+                        task.streaming(context.streamingHandle());
+                        if (!ended.get() && !task.cancelled.get())
+                            handler.onPartialToolCall(call, context);
+                    }
+
+                    @Override
+                    public void onCompleteToolCall(CompleteToolCall call) {
+                        if (!ended.get() && !task.cancelled.get()) handler.onCompleteToolCall(call);
+                    }
+
+                    @Override
+                    public void onPartialThinking(
+                            PartialThinking text, PartialThinkingContext context) {
+                        task.streaming(context.streamingHandle());
+                        if (!ended.get() && !task.cancelled.get())
+                            handler.onPartialThinking(text, context);
+                    }
+
+                    @Override
                     public void onError(Throwable error) {
                         if (ended.compareAndSet(false, true)) handler.onError(error);
                     }
