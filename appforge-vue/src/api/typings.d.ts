@@ -97,6 +97,18 @@ declare namespace API {
     message?: string
   }
 
+  type BaseResponseChatMemoryVO = {
+    code?: number
+    data?: ChatMemoryVO
+    message?: string
+  }
+
+  type BaseResponseChatStatisticsVO = {
+    code?: number
+    data?: ChatStatisticsVO
+    message?: string
+  }
+
   type BaseResponseInteger = {
     code?: number
     data?: number
@@ -117,7 +129,7 @@ declare namespace API {
 
   type BaseResponseLong = {
     code?: number
-    data?: string | number
+    data?: number
     message?: string
   }
 
@@ -130,6 +142,12 @@ declare namespace API {
   type BaseResponsePageAppVO = {
     code?: number
     data?: PageAppVO
+    message?: string
+  }
+
+  type BaseResponsePageChatHistory = {
+    code?: number
+    data?: PageChatHistory
     message?: string
   }
 
@@ -157,13 +175,72 @@ declare namespace API {
     message?: string
   }
 
+  type ChatHistory = {
+    id?: string | number
+    message?: string
+    messageType?: string
+    appId?: string | number
+    userId?: string | number
+    createTime?: string
+    updateTime?: string
+    isDelete?: number
+  }
+
+  type ChatHistoryQueryRequest = {
+    pageNum?: number
+    pageSize?: number
+    sortField?: string
+    sortOrder?: string
+    id?: string | number
+    message?: string
+    messageType?: string
+    appId?: string | number
+    userId?: string | number
+    lastCreateTime?: string
+  }
+
+  type ChatMemoryVO = {
+    enabled?: boolean
+    running?: boolean
+    triggerMessages?: number
+    recentMessages?: number
+    coveredMessages?: number
+    summary?: string
+    lastError?: string
+    updatedTime?: string
+  }
+
+  type ChatStatisticsVO = {
+    roundCount?: number
+    messageCount?: number
+    aiMessageCount?: number
+    lastMessageTime?: string
+  }
+
   type chatToGenCodeParams = {
     appId: string | number
     message: string
   }
 
+  type compressParams = {
+    appId: string | number
+  }
+
   type DeleteRequest = {
     id?: string | number
+  }
+
+  type deployAssetParams = {
+    deployKey: string
+    asset: string
+  }
+
+  type downloadSourceParams = {
+    appId: string | number
+  }
+
+  type exportUsingGETParams = {
+    appId: string | number
   }
 
   type filesParams = {
@@ -192,6 +269,10 @@ declare namespace API {
     fileName: string
   }
 
+  type getInfoParams = {
+    id: string | number
+  }
+
   type getPreviewIndex1Params = {
     appId: string | number
   }
@@ -213,6 +294,13 @@ declare namespace API {
     id: string | number
   }
 
+  type listAppChatHistoryParams = {
+    appId: string | number
+    pageSize?: number
+    lastCreateTime?: string
+    lastId?: string | number
+  }
+
   type LoginUserVO = {
     id?: string | number
     userAccount?: string
@@ -224,6 +312,10 @@ declare namespace API {
     updateTime?: string
   }
 
+  type memoryParams = {
+    appId: string | number
+  }
+
   type PageAppVO = {
     records?: AppVO[]
     pageNumber?: number
@@ -231,6 +323,19 @@ declare namespace API {
     totalPage?: number
     totalRow?: number
     optimizeCountQuery?: boolean
+  }
+
+  type PageChatHistory = {
+    records?: ChatHistory[]
+    pageNumber?: number
+    pageSize?: number
+    totalPage?: number
+    totalRow?: number
+    optimizeCountQuery?: boolean
+  }
+
+  type pageParams = {
+    page: PageChatHistory
   }
 
   type PageUserVO = {
@@ -242,9 +347,24 @@ declare namespace API {
     optimizeCountQuery?: boolean
   }
 
+  type previewAssetParams = {
+    appId: string | number
+    asset: string
+  }
+
+  type removeParams = {
+    id: string | number
+  }
+
   type SseEmitter = {
     timeout?: number
   }
+
+  type statisticsParams = {
+    appId: string | number
+  }
+
+  type StreamingResponseBody = true
 
   type User = {
     id?: string | number

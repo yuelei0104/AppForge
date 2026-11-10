@@ -169,6 +169,21 @@ export async function listPublicAppVoByPage(
   })
 }
 
+/** 此处后端没有提供注释 GET /app/source/download */
+export async function downloadSource(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.downloadSourceParams,
+  options?: { [key: string]: any }
+) {
+  return request<string>('/app/source/download', {
+    method: 'GET',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
 /** 此处后端没有提供注释 POST /app/update */
 export async function updateApp(body: API.AppUpdateRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/app/update', {

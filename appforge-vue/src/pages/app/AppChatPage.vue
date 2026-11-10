@@ -79,7 +79,7 @@ const detailsOpen = ref(false)
 const deleting = ref(false)
 const historyOpen = ref(false)
 const memoryOpen = ref(false)
-const statistics = ref<API.ChatStatistics>()
+const statistics = ref<API.ChatStatisticsVO>()
 const exporting = ref(false)
 let statisticsAbort: AbortController | undefined,
   exportAbort: AbortController | undefined,

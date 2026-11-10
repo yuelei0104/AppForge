@@ -5,7 +5,7 @@ import { compressChatMemory, getChatMemory } from '@/api/chatHistoryController'
 import { formatDateTime } from '@/utils/date'
 const props = defineProps<{ open: boolean; appId: string; busy?: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
-const status = ref<API.ChatMemory>()
+const status = ref<API.ChatMemoryVO>()
 const loading = ref(false),
   submitting = ref(false),
   error = ref('')
@@ -27,8 +27,9 @@ async function load() {
     const res = await getChatMemory(props.appId, controller.signal)
     if (token !== sequence) return
     if (res.data.code !== 0 || !res.data.data) throw new Error(res.data.message || '读取记忆失败')
-    status.value = res.data.data
-    if (status.value.running) timer = setTimeout(() => void load(), 2000)
+    const next = res.data.data
+    status.value = next
+    if (next.running) timer = setTimeout(() => void load(), 2000)
   } catch (cause) {
     if (token === sequence) error.value = cause instanceof Error ? cause.message : '读取记忆失败'
   } finally {

@@ -43,6 +43,20 @@ export async function getDeployResource(
   })
 }
 
+/** 此处后端没有提供注释 GET /deploy/${param0}/assets/${param1} */
+export async function deployAsset(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.deployAssetParams,
+  options?: { [key: string]: any }
+) {
+  const { deployKey: param0, asset: param1, ...queryParams } = params
+  return request<string>(`/deploy/${param0}/assets/${param1}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
 /** 此处后端没有提供注释 GET /static/${param0} */
 export async function getPreviewIndex(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -79,6 +93,20 @@ export async function getPreviewResource(
 ) {
   const { appId: param0, fileName: param1, ...queryParams } = params
   return request<string>(`/static/${param0}/${param1}`, {
+    method: 'GET',
+    params: { ...queryParams },
+    ...(options || {}),
+  })
+}
+
+/** 此处后端没有提供注释 GET /static/${param0}/assets/${param1} */
+export async function previewAsset(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.previewAssetParams,
+  options?: { [key: string]: any }
+) {
+  const { appId: param0, asset: param1, ...queryParams } = params
+  return request<string>(`/static/${param0}/assets/${param1}`, {
     method: 'GET',
     params: { ...queryParams },
     ...(options || {}),
