@@ -9,3 +9,7 @@
 - 如果用户需求简单，只需要一个展示页面，选择 HTML
 - 如果用户需要多个页面但不涉及复杂交互，选择 MULTI_FILE
 - 如果用户需求复杂，涉及多页面、复杂交互、数据管理等，选择 VUE_PROJECT
+
+输出要求：
+- 只返回一个 JSON 对象（json object），不要输出 Markdown 代码块或任何额外说明。
+- JSON 格式必须为：{"value":"HTML"}，其中 value 只能是 HTML、MULTI_FILE 或 VUE_PROJECT。

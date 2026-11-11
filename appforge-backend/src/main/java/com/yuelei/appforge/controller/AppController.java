@@ -39,9 +39,14 @@ public class AppController {
     @Resource private AppWorkspaceService workspace;
 
     @PostMapping("/add")
-    public BaseResponse<Long> addApp(@RequestBody AppAddRequest body, HttpServletRequest request) {
-        return ResultUtils.success(appService.addApp(body, userService.getLoginUser(request)));
+    public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
+        ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        Long appId = appService.createApp(appAddRequest, loginUser);
+        return ResultUtils.success(appId);
     }
+
 
     @PostMapping("/update")
     public BaseResponse<Boolean> updateApp(

@@ -157,5 +157,7 @@ public interface AppService extends IService<App> {
     void generateAppScreenshotAsync(Long appId, String appUrl);
 
     boolean removeById(Serializable id);
+
+    Long createApp(AppAddRequest appAddRequest, User loginUser);
 }
 

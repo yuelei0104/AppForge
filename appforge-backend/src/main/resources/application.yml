@@ -56,8 +56,6 @@ langchain4j:
       model-name: deepseek-flash
       log-requests: true
       log-responses: true
-      strict-json-schema: true
-      response-format: json_object
       reasoning-effort: none
 
     streaming-chat-model:
