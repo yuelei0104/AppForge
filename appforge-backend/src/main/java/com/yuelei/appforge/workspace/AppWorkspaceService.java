@@ -23,6 +23,7 @@ import java.util.*;
 @Service
 @Slf4j
 public class AppWorkspaceService {
+    @Resource private com.yuelei.appforge.cover.AppCoverTasks coverTasks;
     @Resource private JdbcTemplate jdbcTemplate;
     @Resource private TransactionTemplate transactionTemplate;
     @Resource private AppFileStore fileStore;
@@ -126,6 +127,9 @@ public class AppWorkspaceService {
                     next,
                     LocalDateTime.now(),
                     app.getId());
+            if (coverTasks != null)
+                coverTasks.enqueue(
+                        app.getId(), next, "ROLLBACK".equals(kind) ? "RESTORE" : "GENERATE");
             return next;
         } catch (RuntimeException e) {
             try {
@@ -193,6 +197,7 @@ public class AppWorkspaceService {
                             LocalDateTime.now(),
                             LocalDateTime.now(),
                             id);
+                    if (coverTasks != null) coverTasks.enqueue(id, version, "DEPLOY");
                     return key;
                 });
     }
@@ -287,6 +292,7 @@ public class AppWorkspaceService {
                                                     ? "html"
                                                     : app.getCodeGenType(),
                                             app.getDeployKey());
+                                    if (coverTasks != null) coverTasks.deleted(id);
                                     jdbcTemplate.update(
                                             "DELETE FROM app_version WHERE appId=?", id);
                                     jdbcTemplate.update(
@@ -363,4 +369,3 @@ public class AppWorkspaceService {
                 "生成代码过大或包含不支持的文件");
     }
 }
-

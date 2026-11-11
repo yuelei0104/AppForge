@@ -4,6 +4,8 @@ import { computed, ref, watch } from 'vue'
 import { AppstoreOutlined, EditOutlined } from '@ant-design/icons-vue'
 import { generationLabel, isOnline } from '@/utils/appStatus'
 import UserInfo from '@/components/UserInfo.vue'
+import { API_BASE_URL } from '@/config/env'
+import { coverPending, resolveCoverUrl } from '@/utils/cover'
 import { getAppDeployUrl } from '@/utils/appUrls'
 
 const props = withDefaults(
@@ -22,6 +24,7 @@ const emit = defineEmits<{
   edit: [app: AppInfo]
 }>()
 
+const coverUrl = computed(() => resolveCoverUrl(props.app, API_BASE_URL))
 const coverFailed = ref(false)
 watch(
   () => props.app.cover,
@@ -49,7 +52,7 @@ function handleEdit(event: MouseEvent) {
     <div class="app-card__cover">
       <img
         v-if="app.cover && !coverFailed"
-        :src="app.cover"
+        :src="coverUrl"
         :alt="appName"
         loading="lazy"
         @error="coverFailed = true"
@@ -63,6 +66,14 @@ function handleEdit(event: MouseEvent) {
         (app.priority ?? 0) >= 999 ? '置顶' : '精选'
       }}</a-tag>
 
+      <span
+        v-if="app.coverEnabled && (coverPending(app.coverStatus) || app.coverStatus === 'FAILED')"
+        class="app-card__cover-status"
+        aria-live="polite"
+        >{{
+          app.coverStatus === 'FAILED' ? '封面暂未更新' : app.cover ? '封面更新中' : '封面生成中'
+        }}</span
+      >
       <div class="app-card__actions">
         <a-button type="primary" @click.stop="handleOpen">查看对话</a-button>
         <a-button
@@ -107,6 +118,17 @@ function handleEdit(event: MouseEvent) {
 </template>
 
 <style scoped>
+.app-card__cover-status {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  z-index: 2;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #56627a;
+  padding: 4px 8px;
+  font-size: 12px;
+}
 .app-card {
   overflow: hidden;
   cursor: pointer;

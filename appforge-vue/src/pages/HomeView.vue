@@ -2,7 +2,8 @@
 import { createAppWithMode, listPublicApps, type AppInfo, type AppFilters } from '@/api/workspace'
 import { CodeGenTypeEnum } from '@/config/codeGenType'
 import { generationModeOptions, type GenerationMode } from '@/utils/generationMode'
-import { computed, onMounted, ref } from 'vue'
+import { coverPending } from '@/utils/cover'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { ArrowUpOutlined, LoginOutlined } from '@ant-design/icons-vue'
@@ -184,6 +185,33 @@ function editMyApp(app: AppInfo) {
 function openGoodApp(app: AppInfo) {
   openMyApp(app)
 }
+
+let coverTimer: ReturnType<typeof setInterval> | undefined
+let coverDeadline = 0
+const coversPending = computed(() =>
+  [...myApps.value, ...goodApps.value].some(
+    (app) => app.coverEnabled && coverPending(app.coverStatus),
+  ),
+)
+watch(coversPending, (pending) => {
+  clearInterval(coverTimer)
+  coverTimer = undefined
+  if (!pending) return
+  coverDeadline = Date.now() + 120000
+  coverTimer = setInterval(() => {
+    if (Date.now() >= coverDeadline) {
+      clearInterval(coverTimer)
+      coverTimer = undefined
+      return
+    }
+    if (document.hidden) return
+    if (!myLoading.value && myApps.value.some((app) => coverPending(app.coverStatus)))
+      void fetchMyApps()
+    if (!goodLoading.value && goodApps.value.some((app) => coverPending(app.coverStatus)))
+      void fetchGoodApps()
+  }, 3000)
+})
+onBeforeUnmount(() => clearInterval(coverTimer))
 
 onMounted(() => {
   void fetchMyApps()

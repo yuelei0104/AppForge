@@ -7,6 +7,11 @@ import java.time.LocalDateTime;
 
 @Data
 public class AppVO implements Serializable {
+    private Boolean coverEnabled;
+    private String coverMode;
+    private String coverStatus;
+    private Integer coverVersion;
+    private String coverRevision;
 
     private String description;
 

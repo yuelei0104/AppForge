@@ -61,6 +61,11 @@ declare namespace API {
   }
 
   type AppVO = {
+    coverEnabled?: boolean
+    coverMode?: string
+    coverStatus?: string
+    coverVersion?: number
+    coverRevision?: string
     description?: string
     tags?: string[]
     visibility?: string

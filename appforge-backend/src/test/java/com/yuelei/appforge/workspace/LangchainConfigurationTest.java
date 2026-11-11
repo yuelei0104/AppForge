@@ -14,6 +14,7 @@ class LangchainConfigurationTest {
     void existingModelPropertyNamesStillCreateBothModelsWithoutCallingTheProvider() {
         new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(AutoConfig.class))
+                .withUserConfiguration(com.yuelei.appforge.config.StreamingHttpClientConfig.class)
                 .withPropertyValues(
                         "langchain4j.open-ai.chat-model.api-key=local-test-key",
                         "langchain4j.open-ai.chat-model.base-url=http://127.0.0.1:9",
@@ -28,6 +29,9 @@ class LangchainConfigurationTest {
                 .run(
                         context -> {
                             assertNull(context.getStartupFailure());
+                            assertInstanceOf(
+                                    dev.langchain4j.http.client.jdk.JdkHttpClientBuilder.class,
+                                    context.getBean("openAiStreamingChatModelHttpClientBuilder"));
                             assertEquals(1, context.getBeansOfType(OpenAiChatModel.class).size());
                             assertEquals(
                                     1,

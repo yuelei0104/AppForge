@@ -76,6 +76,8 @@ git commit -m "refactor: run backend directly from its source root"
 
 对话轮数统计、Markdown 导出与智能记忆摘要的升级、使用和验证方式见 [对话扩展说明](docs/05-chat-conversation-extensions.md)。
 
-## 应用封面扩展设计
+## 自动应用封面
 
-后台截图排队、版本隔离、失败重试、私有封面读取与资源清理的待实现方案见 [应用封面任务设计](docs/07-app-cover-design.md)。该文档只定义实现方案，本次文档提交不会启用这些功能，也不需要执行数据库升级。
+生成、版本恢复和部署后自动排队截图，支持有限重试、版本隔离、私有图片读取、手动重新生成、自定义封面和资源清理。失败保留原图或显示默认占位。
+
+已有数据库先执行 `sql/migrations/20261110_app_cover.sql`，配置 COS 与 Chrome 后设置 `APP_COVER_ENABLED=true`。详细步骤见 [封面启用与验证](docs/08-app-cover.md)，架构约束见 [任务设计](docs/07-app-cover-design.md)。

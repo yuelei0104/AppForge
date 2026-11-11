@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AppInfo } from '@/api/workspace'
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons-vue'
+import AppCoverControls from '@/components/AppCoverControls.vue'
 import UserInfo from '@/components/UserInfo.vue'
 import { generationLabel, featureLabel, isOnline } from '@/utils/appStatus'
 import { formatDateTime } from '@/utils/date'
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   delete: []
   offline: []
   feature: []
+  'cover-change': []
 }>()
 </script>
 
@@ -57,6 +59,15 @@ const emit = defineEmits<{
     </a-descriptions>
 
     <template v-if="app && canManage">
+      <AppCoverControls
+        v-if="open"
+        :app-id="String(app.id)"
+        :version="app.currentVersion || 0"
+        :active="open"
+        :busy="busy || deleting"
+        :initial-manual-url="app.coverMode === 'MANUAL' ? app.cover : ''"
+        @changed="emit('cover-change')"
+      />
       <a-divider />
       <a-space wrap>
         <a-button type="primary" :disabled="busy || deleting" @click="emit('edit')">
