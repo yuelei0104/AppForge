@@ -16,24 +16,28 @@ public final class AppPageRenderer {
     public static String withVisualEditorBridge(String html) {
         var document = Jsoup.parse(html);
         document.outputSettings().prettyPrint(false);
-        document.head().appendElement("script").attr("id", "appforge-visual-editor-bridge")
-                .appendChild(new org.jsoup.nodes.DataNode("""
-                (() => {
-                  window.addEventListener('message', event => {
-                    if (event.source !== window.parent || !event.data || typeof event.data !== 'object') return;
-                    const message = event.data;
-                    if (message.type !== 'INSTALL_VISUAL_EDITOR' || typeof message.script !== 'string' || message.script.length > 100000) return;
-                    if (document.getElementById('visual-edit-script')) {
-                      window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { type: 'TOGGLE_EDIT_MODE', editMode: message.editMode === true } }));
-                      return;
-                    }
-                    const script = document.createElement('script');
-                    script.id = 'visual-edit-script';
-                    script.textContent = message.script;
-                    document.head.appendChild(script);
-                  });
-                })();
-                """));
+        document.head()
+                .appendElement("script")
+                .attr("id", "appforge-visual-editor-bridge")
+                .appendChild(
+                        new org.jsoup.nodes.DataNode(
+                                """
+(() => {
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || !event.data || typeof event.data !== 'object') return;
+    const message = event.data;
+    if (message.type !== 'INSTALL_VISUAL_EDITOR' || typeof message.script !== 'string' || message.script.length > 100000) return;
+    if (document.getElementById('visual-edit-script')) {
+      window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { type: 'TOGGLE_EDIT_MODE', editMode: message.editMode === true } }));
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'visual-edit-script';
+    script.textContent = message.script;
+    document.head.appendChild(script);
+  });
+})();
+"""));
         return document.outerHtml();
     }
 

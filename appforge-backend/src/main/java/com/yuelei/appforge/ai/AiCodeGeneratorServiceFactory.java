@@ -96,7 +96,11 @@ public class AiCodeGeneratorServiceFactory {
                 .streamingChatModel(model)
                 .chatMemory(MessageWindowChatMemory.withMaxMessages(80))
                 .tools(tools)
-                .hallucinatedToolNameStrategy(request -> dev.langchain4j.data.message.ToolExecutionResultMessage.from(request, "Error: there is no tool called " + request.name()))
+                .hallucinatedToolNameStrategy(
+                        request ->
+                                dev.langchain4j.data.message.ToolExecutionResultMessage.from(
+                                        request,
+                                        "Error: there is no tool called " + request.name()))
                 .maxSequentialToolsInvocations(60)
                 .build();
     }

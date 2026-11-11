@@ -33,7 +33,9 @@ public class StaticResourceController {
             App app = workspace.requireApp(appId);
             User user = viewer(request);
             if (!AppPolicy.canRead(app, user)) return ResponseEntity.notFound().build();
-            boolean editor = "1".equals(request.getParameter("visualEditor")) && AppPolicy.isOwner(app, user);
+            boolean editor =
+                    "1".equals(request.getParameter("visualEditor"))
+                            && AppPolicy.isOwner(app, user);
             return file(workspace.previewFiles(app), fileName, !AppPolicy.isPublic(app), editor);
         } catch (BusinessException e) {
             return ResponseEntity.notFound().build();
@@ -108,7 +110,8 @@ public class StaticResourceController {
             content = AppPageRenderer.prepareNativeAssets(files, false);
         if ((!project && !AppFileStore.FILES.contains(name)) || content == null)
             return ResponseEntity.notFound().build();
-        if (editor && "index.html".equals(name)) content = AppPageRenderer.withVisualEditorBridge(content);
+        if (editor && "index.html".equals(name))
+            content = AppPageRenderer.withVisualEditorBridge(content);
         return ResponseEntity.ok()
                 .contentType(
                         new MediaType(

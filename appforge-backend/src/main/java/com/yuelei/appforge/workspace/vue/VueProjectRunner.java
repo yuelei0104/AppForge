@@ -16,8 +16,10 @@ import reactor.core.scheduler.Schedulers;
 public class VueProjectRunner {
     @Resource private AiCodeGeneratorServiceFactory factory;
     @Resource private AiCodeGeneratorFacade facade;
+
     @Resource(name = "reasoningStreamingChatModel")
     private StreamingChatModel streamingChatModel;
+
     @Resource private VueProjectBuilder builder;
     @Resource private com.yuelei.appforge.ai.tools.ToolManager toolManager;
 
@@ -28,7 +30,11 @@ public class VueProjectRunner {
                     String prompt = facade.contextForProject(request, appId, currentMessageId);
                     var service =
                             factory.vueProjectService(
-                                    (toolManager == null ? com.yuelei.appforge.ai.tools.ToolManager.defaults() : toolManager).getAllTools(task),
+                                    (toolManager == null
+                                                    ? com.yuelei.appforge.ai.tools.ToolManager
+                                                            .defaults()
+                                                    : toolManager)
+                                            .getAllTools(task),
                                     new BudgetedStreamingModel(streamingChatModel, task));
                     return com.yuelei.appforge.core.adapter.TokenStreamFluxAdapter.adapt(
                                     service.generate(prompt), task)

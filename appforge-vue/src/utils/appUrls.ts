@@ -3,7 +3,7 @@ import { API_BASE_URL, DEPLOY_DOMAIN, STATIC_BASE_URL } from '@/config/env'
 
 /** 已部署作品与生成预览使用不同的后端路由。 */
 export function getAppDeployUrl(deployKey: string) {
-  return `${DEPLOY_DOMAIN}/${encodeURIComponent(deployKey)}/`
+  return new URL(`${DEPLOY_DOMAIN}/${encodeURIComponent(deployKey)}/`, window.location.origin).href
 }
 
 /**

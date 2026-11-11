@@ -15,9 +15,14 @@ import java.util.function.Consumer;
 @Slf4j
 public final class JsonMessageStreamHandler {
     private final com.yuelei.appforge.ai.tools.ToolManager tools;
-    public JsonMessageStreamHandler() { this(com.yuelei.appforge.ai.tools.ToolManager.defaults()); }
-    public JsonMessageStreamHandler(com.yuelei.appforge.ai.tools.ToolManager tools) { this.tools = tools; }
-    private String label(String name) { var tool = tools.getTool(name); return tool == null ? "未知工具" : tool.getDisplayName(); }
+
+    public JsonMessageStreamHandler() {
+        this(com.yuelei.appforge.ai.tools.ToolManager.defaults());
+    }
+
+    public JsonMessageStreamHandler(com.yuelei.appforge.ai.tools.ToolManager tools) {
+        this.tools = tools;
+    }
 
     public Flux<String> handle(Flux<String> source, Consumer<String> history) {
         return Flux.defer(
@@ -42,7 +47,11 @@ public final class JsonMessageStreamHandler {
                                                                     + ":"
                                                                     + request.getIndex());
                                             var tool = tools.getTool(request.getName());
-                                            return selected.add(id) ? tool == null ? "\n\n[选择工具] 未知工具\n\n" : tool.generateToolRequestResponse() : "";
+                                            return selected.add(id)
+                                                    ? tool == null
+                                                            ? "\n\n[选择工具] 未知工具\n\n"
+                                                            : tool.generateToolRequestResponse()
+                                                    : "";
                                         }
                                         String output;
                                         if (type == StreamMessageTypeEnum.AI_RESPONSE)
@@ -57,13 +66,29 @@ public final class JsonMessageStreamHandler {
                                                                     + result.getArguments());
                                             if (!executed.add(id)) return "";
                                             cn.hutool.json.JSONObject args;
-                                            try { args = JSONUtil.parseObj(Objects.toString(result.getArguments(), "{}")); }
-                                            catch (RuntimeException ignored) { args = new cn.hutool.json.JSONObject(); }
+                                            try {
+                                                args =
+                                                        JSONUtil.parseObj(
+                                                                Objects.toString(
+                                                                        result.getArguments(),
+                                                                        "{}"));
+                                            } catch (RuntimeException ignored) {
+                                                args = new cn.hutool.json.JSONObject();
+                                            }
                                             var tool = tools.getTool(result.getName());
                                             if (tool == null) output = "\n\n[工具失败] 未知工具\n\n";
                                             else {
                                                 args.set("content", result.getContent());
-                                                output = "\n\n" + (result.isFailed() ? tool.generateFailureResponse(args) : tool.generateToolExecutedResult(args)) + "\n\n";
+                                                output =
+                                                        "\n\n"
+                                                                + (result.isFailed()
+                                                                        ? tool
+                                                                                .generateFailureResponse(
+                                                                                        args)
+                                                                        : tool
+                                                                                .generateToolExecutedResult(
+                                                                                        args))
+                                                                + "\n\n";
                                             }
                                         }
                                         if (!output.isEmpty()) history.accept(output);
@@ -72,5 +97,4 @@ public final class JsonMessageStreamHandler {
                             .filter(value -> !value.isEmpty());
                 });
     }
-
 }
