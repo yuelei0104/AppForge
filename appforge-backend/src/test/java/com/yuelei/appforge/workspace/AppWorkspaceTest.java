@@ -114,6 +114,43 @@ class AppWorkspaceTest {
     }
 
     @Test
+    void coverTasksFollowGenerationDeploymentRestoreAndDeletionTransactions() throws Exception {
+        String migration =
+                Files.readString(Path.of("../sql/migrations/20261110_app_cover.sql"))
+                        .replace(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4", "");
+        for (String sql : migration.split(";")) if (!sql.isBlank()) jdbc.execute(sql);
+        var config = new com.yuelei.appforge.cover.CoverProperties();
+        config.setEnabled(true);
+        var tasks =
+                new com.yuelei.appforge.cover.AppCoverTasks(
+                        jdbc,
+                        new TransactionTemplate(
+                                new DataSourceTransactionManager(jdbc.getDataSource())),
+                        config);
+        ReflectionTestUtils.setField(workspace, "coverTasks", tasks);
+        snapshot("cover", "<h1>version one</h1>");
+        long first = jdbc.queryForObject("SELECT coverTaskId FROM app WHERE id=?", Long.class, id);
+        assertEquals("PENDING", tasks.status(id, owner).get("status"));
+        workspace.deploy(id, owner);
+        assertEquals(
+                first,
+                jdbc.queryForObject("SELECT coverTaskId FROM app WHERE id=?", Long.class, id));
+        var attempt = tasks.claim(first, "test");
+        assertNotNull(attempt);
+        assertEquals(2, workspace.rollback(id, 1, owner));
+        assertFalse(tasks.publish(attempt));
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM app_cover_task", Integer.class));
+        assertTrue(workspace.delete(id, owner));
+        assertEquals(
+                0,
+                jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM app_cover_task WHERE status IN"
+                            + " ('PENDING','RUNNING','RETRY_WAIT')",
+                        Integer.class));
+        assertFalse(tasks.publish(attempt));
+    }
+
+    @Test
     void versionsAreImmutableAndRollbackDoesNotChangePublishedVersion() throws Exception {
         assertEquals(1, snapshot("a", "<h1>v1</h1>"));
         String key = workspace.deploy(id, owner);

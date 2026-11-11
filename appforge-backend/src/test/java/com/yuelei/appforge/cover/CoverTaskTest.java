@@ -41,13 +41,13 @@ abstract class CoverTestDatabase {
         tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
         jdbc.execute(
                 "CREATE TABLE app(id bigint primary key,userId bigint,visibility varchar(16)"
-                    + " default 'PRIVATE',priority int default 0,isDelete int default"
-                    + " 0,currentVersion int default 1,cover varchar(512))");
+                        + " default 'PRIVATE',priority int default 0,isDelete int default"
+                        + " 0,currentVersion int default 1,cover varchar(512))");
         jdbc.execute("CREATE TABLE `user`(id bigint primary key)");
         jdbc.update("INSERT INTO `user` VALUES(100),(200)");
         jdbc.execute(
                 "CREATE TABLE app_version(appId bigint,versionNo int,codeFiles text,primary"
-                    + " key(appId,versionNo))");
+                        + " key(appId,versionNo))");
         String migration =
                 Files.readString(Path.of("../sql/migrations/20261110_app_cover.sql"))
                         .replace(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4", "");
@@ -309,5 +309,23 @@ class CoverTaskTest extends CoverTestDatabase {
     void badConfigurationFailsAtStartup() {
         config.setLeaseSeconds(1);
         assertThrows(IllegalStateException.class, tasks::validateConfiguration);
+    }
+
+    @Test
+    void switchingToAutomaticIsIdempotentAndDoesNotBypassManualRateLimit() {
+        var a = claim();
+        tasks.setMode(1, "AUTO", null, owner);
+        assertEquals(a.id(), taskId());
+        tasks.setMode(1, "MANUAL", "", owner);
+        tasks.setMode(1, "AUTO", null, owner);
+        long next = taskId();
+        tasks.setMode(1, "AUTO", null, owner);
+        assertEquals(next, taskId());
+        tasks.setMode(1, "MANUAL", "", owner);
+        assertThrows(BusinessException.class, () -> tasks.setMode(1, "AUTO", null, owner));
+        assertEquals("MANUAL", tasks.status(1, owner).get("mode"));
+        advance(31);
+        tasks.setMode(1, "AUTO", null, owner);
+        assertNotEquals(next, taskId());
     }
 }

@@ -91,6 +91,7 @@ public class AppCoverWorker implements AutoCloseable {
     }
 
     void execute(long id) {
+        if (paused || closed) return;
         var attempt = tasks.claim(id, workerId);
         if (attempt == null) return;
         var session = new CoverRenderer.Session();

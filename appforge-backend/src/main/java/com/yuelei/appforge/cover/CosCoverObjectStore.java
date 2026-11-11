@@ -35,8 +35,8 @@ public class CosCoverObjectStore implements CoverObjectStore {
             byte[] bytes = input.readNBytes(1_048_577);
             if (bytes.length > 1_048_576) throw new IllegalStateException("封面文件过大");
             return bytes;
-        } catch (IOException e) {
-            throw new IllegalStateException("封面读取失败", e);
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalStateException("封面读取失败");
         }
     }
 

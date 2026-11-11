@@ -203,29 +203,32 @@ public class AppCoverTasks {
                             "MANUAL".equals(a.get("coverMode")),
                             ErrorCode.OPERATION_ERROR,
                             "请先切换为自动截图");
-                    jdbc.queryForList("SELECT id FROM `user` WHERE id=? FOR UPDATE", user.getId());
-                    int count =
-                            Objects.requireNonNull(
-                                    jdbc.queryForObject(
-                                            "SELECT COUNT(*) FROM app_cover_task WHERE"
-                                                + " requestedBy=? AND createTime>?",
-                                            Integer.class,
-                                            user.getId(),
-                                            now().minusMinutes(1)));
-                    int recent =
-                            Objects.requireNonNull(
-                                    jdbc.queryForObject(
-                                            "SELECT COUNT(*) FROM app_cover_task WHERE appId=? AND"
-                                                + " triggerType='MANUAL' AND createTime>?",
-                                            Integer.class,
-                                            id,
-                                            now().minusSeconds(30)));
-                    ThrowUtils.throwIf(
-                            count >= 5 || recent > 0, ErrorCode.OPERATION_ERROR, "请求较频繁，请稍后再试");
+                    limitManualRequests(id, user);
                     Long task = create(id, version, "MANUAL", requestId, user.getId(), true);
                     return response(
                             jdbc.queryForMap("SELECT * FROM app_cover_task WHERE id=?", task));
                 });
+    }
+
+    private void limitManualRequests(long id, User user) {
+        jdbc.queryForList("SELECT id FROM `user` WHERE id=? FOR UPDATE", user.getId());
+        int count =
+                Objects.requireNonNull(
+                        jdbc.queryForObject(
+                                "SELECT COUNT(*) FROM app_cover_task WHERE"
+                                        + " requestedBy=? AND createTime>?",
+                                Integer.class,
+                                user.getId(),
+                                now().minusMinutes(1)));
+        int recent =
+                Objects.requireNonNull(
+                        jdbc.queryForObject(
+                                "SELECT COUNT(*) FROM app_cover_task WHERE appId=? AND"
+                                        + " requestedBy IS NOT NULL AND createTime>?",
+                                Integer.class,
+                                id,
+                                now().minusSeconds(30)));
+        ThrowUtils.throwIf(count >= 5 || recent > 0, ErrorCode.OPERATION_ERROR, "请求较频繁，请稍后再试");
     }
 
     private Map<String, Object> response(Map<String, Object> t) {
@@ -253,15 +256,23 @@ public class AppCoverTasks {
                                 url == null ? "" : url.trim(),
                                 id);
                     } else {
+                        if ("AUTO".equals(a.get("coverMode"))) return;
+                        if (n(a, "currentVersion") > 0) limitManualRequests(id, user);
                         jdbc.update(
                                 "UPDATE app SET coverMode='AUTO',coverRevision=coverRevision+1"
-                                    + " WHERE id=?",
+                                        + " WHERE id=?",
                                 id);
                         if (n(a, "currentVersion") <= 0)
                             jdbc.update(
                                     "UPDATE app SET coverTaskId=NULL,coverStatus='NONE' WHERE id=?",
                                     id);
-                        create(id, (int) n(a, "currentVersion"), "REPAIR", null, null, true);
+                        create(
+                                id,
+                                (int) n(a, "currentVersion"),
+                                "REPAIR",
+                                null,
+                                user.getId(),
+                                true);
                     }
                 });
     }
@@ -332,7 +343,7 @@ public class AppCoverTasks {
         if (!enabled() || count <= 0) return List.of();
         return jdbc.queryForList(
                 "SELECT id FROM app_cover_task WHERE status IN ('PENDING','RETRY_WAIT') AND"
-                    + " nextRunTime<=? ORDER BY nextRunTime,id LIMIT ?",
+                        + " nextRunTime<=? ORDER BY nextRunTime,id LIMIT ?",
                 Long.class,
                 now(),
                 count);
@@ -427,7 +438,7 @@ public class AppCoverTasks {
     public boolean renew(Attempt a) {
         return jdbc.update(
                         "UPDATE app_cover_task SET leaseUntil=?,updateTime=? WHERE id=? AND"
-                            + " status='RUNNING' AND executionToken=? AND leaseUntil>?",
+                                + " status='RUNNING' AND executionToken=? AND leaseUntil>?",
                         now().plusSeconds(config.getLeaseSeconds()),
                         now(),
                         a.id(),
@@ -510,7 +521,7 @@ public class AppCoverTasks {
         for (Long id :
                 jdbc.queryForList(
                         "SELECT id FROM app_cover_task WHERE status='RUNNING' AND leaseUntil<=?"
-                            + " LIMIT 20",
+                                + " LIMIT 20",
                         Long.class,
                         now())) {
             var initial = jdbc.queryForMap("SELECT appId FROM app_cover_task WHERE id=?", id);
@@ -581,7 +592,7 @@ public class AppCoverTasks {
     public List<Map<String, Object>> cleanupDue() {
         return jdbc.queryForList(
                 "SELECT * FROM app_cover_cleanup WHERE notBefore<=? AND nextRunTime<=? ORDER BY id"
-                    + " LIMIT 20",
+                        + " LIMIT 20",
                 now(),
                 now());
     }
@@ -590,14 +601,14 @@ public class AppCoverTasks {
         return Objects.requireNonNull(
                                 jdbc.queryForObject(
                                         "SELECT COUNT(*) FROM app WHERE isDelete=0 AND"
-                                            + " coverObjectKey=?",
+                                                + " coverObjectKey=?",
                                         Integer.class,
                                         key))
                         > 0
                 || Objects.requireNonNull(
                                 jdbc.queryForObject(
                                         "SELECT COUNT(*) FROM app_cover_task WHERE objectKey=? AND"
-                                            + " status='RUNNING' AND leaseUntil>?",
+                                                + " status='RUNNING' AND leaseUntil>?",
                                         Integer.class,
                                         key,
                                         now()))
@@ -619,9 +630,9 @@ public class AppCoverTasks {
         if (enabled())
             jdbc.update(
                     "DELETE FROM app_cover_task WHERE status IN ('FAILED','CANCELLED','SUCCEEDED')"
-                        + " AND updateTime<? AND id NOT IN (SELECT coverTaskId FROM app WHERE"
-                        + " coverTaskId IS NOT NULL) AND (objectKey IS NULL OR objectKey NOT IN"
-                        + " (SELECT objectKey FROM app_cover_cleanup))",
+                            + " AND updateTime<? AND id NOT IN (SELECT coverTaskId FROM app WHERE"
+                            + " coverTaskId IS NOT NULL) AND (objectKey IS NULL OR objectKey NOT IN"
+                            + " (SELECT objectKey FROM app_cover_cleanup))",
                     now().minusDays(30));
     }
 
@@ -652,7 +663,7 @@ public class AppCoverTasks {
         for (var row :
                 jdbc.queryForList(
                         "SELECT id,coverMode,coverStatus,coverVersion,coverRevision,coverObjectKey"
-                            + " FROM app WHERE id IN ("
+                                + " FROM app WHERE id IN ("
                                 + args
                                 + ")",
                         byId.keySet().toArray())) {
@@ -730,7 +741,7 @@ public class AppCoverTasks {
         String marker = id + ":" + t.get("executionToken");
         String html =
                 "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"appforge-cover\""
-                    + " content=\""
+                        + " content=\""
                         + HtmlUtil.escape(marker)
                         + "\"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{width:100%;height:100%;border:0;display:block}</style></head><body><iframe"
                         + " id=\"cover-content\" sandbox=\"allow-scripts\""
@@ -743,7 +754,7 @@ public class AppCoverTasks {
                         .collect(java.util.stream.Collectors.joining(" "));
         String csp =
                 "default-src 'none'; script-src 'unsafe-inline' data:; style-src 'unsafe-inline'"
-                    + " data:; img-src data: "
+                        + " data:; img-src data: "
                         + hosts
                         + "; font-src data: "
                         + hosts
