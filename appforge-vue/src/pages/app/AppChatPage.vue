@@ -1037,6 +1037,7 @@ onBeforeUnmount(() => {
       @delete="handleDeleteApp"
       @offline="handleWorkspaceAction('offline')"
       @feature="handleWorkspaceAction('feature')"
+      @cover-change="refreshApp"
     />
 
     <ChatMemoryModal

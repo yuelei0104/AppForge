@@ -163,7 +163,7 @@ class AppWorkspaceTest {
     }
 
     @Test
-    void deploymentVisibilityOfflineAndSoftDeleteAreCheckedAtResourceEndpoint() {
+    void deploymentSharingPrivatePreviewOfflineAndSoftDeleteAreCheckedAtResourceEndpoint() {
         snapshot("a", "<h1>private</h1>");
         String key = workspace.deploy(id, owner);
         StaticResourceController controller = new StaticResourceController();
@@ -184,7 +184,7 @@ class AppWorkspaceTest {
                                 });
         ReflectionTestUtils.setField(controller, "userService", users);
         MockHttpServletRequest request = new MockHttpServletRequest();
-        assertEquals(404, controller.getDeployIndex(key, request).getStatusCode().value());
+        assertEquals(200, controller.getDeployIndex(key, request).getStatusCode().value());
         viewer.set(other);
         assertEquals(404, controller.getPreviewIndex(id, request).getStatusCode().value());
         viewer.set(owner);
@@ -379,7 +379,10 @@ class AppWorkspaceTest {
                                 });
         ReflectionTestUtils.setField(service, "generation", gen);
         ReflectionTestUtils.setField(service, "chatHistoryService", recorder);
-        ReflectionTestUtils.setField(service, "streamHandlerExecutor", new com.yuelei.appforge.core.handler.StreamHandlerExecutor());
+        ReflectionTestUtils.setField(
+                service,
+                "streamHandlerExecutor",
+                new com.yuelei.appforge.core.handler.StreamHandlerExecutor());
         return service;
     }
 
@@ -575,4 +578,3 @@ class AppWorkspaceTest {
         assertTrue(text.contains("超时"), text);
     }
 }
-

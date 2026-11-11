@@ -127,7 +127,9 @@ public class AppWorkspaceService {
                     next,
                     LocalDateTime.now(),
                     app.getId());
-            if (coverTasks != null) coverTasks.enqueue(app.getId(), next, "ROLLBACK".equals(kind) ? "RESTORE" : "GENERATE");
+            if (coverTasks != null)
+                coverTasks.enqueue(
+                        app.getId(), next, "ROLLBACK".equals(kind) ? "RESTORE" : "GENERATE");
             return next;
         } catch (RuntimeException e) {
             try {
@@ -367,4 +369,3 @@ public class AppWorkspaceService {
                 "生成代码过大或包含不支持的文件");
     }
 }
-

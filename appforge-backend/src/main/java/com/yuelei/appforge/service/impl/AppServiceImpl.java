@@ -161,7 +161,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App updateApp = new App();
         updateApp.setId(app.getId());
         updateApp.setAppName(appName);
-        if (appUpdateRequest.getCover() != null && (coverTasks == null || !coverTasks.isCurrentImageUrl(app.getId(), appUpdateRequest.getCover()))) {
+        if (appUpdateRequest.getCover() != null
+                && (coverTasks == null
+                        || !coverTasks.isCurrentImageUrl(
+                                app.getId(), appUpdateRequest.getCover()))) {
             updateApp.setCover(validateCover(appUpdateRequest.getCover()));
         }
         applyMetadata(
@@ -264,7 +267,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             updateApp.setAppName(appName);
             hasUpdate = true;
         }
-        if (appAdminUpdateRequest.getCover() != null && (coverTasks == null || !coverTasks.isCurrentImageUrl(app.getId(), appAdminUpdateRequest.getCover()))) {
+        if (appAdminUpdateRequest.getCover() != null
+                && (coverTasks == null
+                        || !coverTasks.isCurrentImageUrl(
+                                app.getId(), appAdminUpdateRequest.getCover()))) {
             updateApp.setCover(validateCover(appAdminUpdateRequest.getCover()));
             hasUpdate = true;
         }
@@ -354,20 +360,21 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Map<Long, UserVO> userVOMap =
                 userService.listByIds(userIds).stream()
                         .collect(Collectors.toMap(User::getId, userService::getUserVO));
-        List<AppVO> views = appList.stream()
-                .map(
-                        app -> {
-                            AppVO appVO = new AppVO();
-                            BeanUtil.copyProperties(app, appVO, "tags");
-                            appVO.setTags(AppPolicy.decodeTags(app.getTags()));
-                            // 列表不返回初始提示词或模型错误，减少公开信息暴露。
-                            appVO.setInitPrompt(null);
-                            appVO.setGenerationError(null);
-                            UserVO userVO = userVOMap.get(app.getUserId());
-                            appVO.setUser(userVO);
-                            return appVO;
-                        })
-                .collect(Collectors.toList());
+        List<AppVO> views =
+                appList.stream()
+                        .map(
+                                app -> {
+                                    AppVO appVO = new AppVO();
+                                    BeanUtil.copyProperties(app, appVO, "tags");
+                                    appVO.setTags(AppPolicy.decodeTags(app.getTags()));
+                                    // 列表不返回初始提示词或模型错误，减少公开信息暴露。
+                                    appVO.setInitPrompt(null);
+                                    appVO.setGenerationError(null);
+                                    UserVO userVO = userVOMap.get(app.getUserId());
+                                    appVO.setUser(userVO);
+                                    return appVO;
+                                })
+                        .collect(Collectors.toList());
         if (coverTasks != null) coverTasks.decorate(views);
         return views;
     }
@@ -584,15 +591,19 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Override
     public void generateAppScreenshotAsync(Long appId, String ignoredUrl) {
         App app = getAppById(appId);
-        coverTasks.enqueue(appId, app.getCurrentVersion() == null ? 0 : app.getCurrentVersion(), "REPAIR");
+        coverTasks.enqueue(
+                appId, app.getCurrentVersion() == null ? 0 : app.getCurrentVersion(), "REPAIR");
     }
 
     private boolean updateWithCover(App update) {
-        if (coverTasks == null || !coverTasks.enabled() || update.getCover() == null) return this.updateById(update);
-        return Boolean.TRUE.equals(coverTransaction.execute(status -> {
-            coverTasks.manualChanged(update.getId());
+        if (coverTasks == null || !coverTasks.enabled() || update.getCover() == null)
             return this.updateById(update);
-        }));
+        return Boolean.TRUE.equals(
+                coverTransaction.execute(
+                        status -> {
+                            coverTasks.manualChanged(update.getId());
+                            return this.updateById(update);
+                        }));
     }
 
     /**

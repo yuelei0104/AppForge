@@ -3,9 +3,9 @@ package com.yuelei.appforge.workspace;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.sun.net.httpserver.HttpServer;
+import com.yuelei.appforge.config.StreamingHttpClientConfig;
 import com.yuelei.appforge.workspace.vue.*;
 
-import dev.langchain4j.http.client.spring.restclient.SpringRestClient;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 
 import org.junit.jupiter.api.Test;
@@ -55,7 +55,7 @@ class VueToolHttpCancellationTest {
                             .baseUrl("http://127.0.0.1:" + server.getAddress().getPort())
                             .apiKey("local-test-key")
                             .modelName("local-test")
-                            .httpClientBuilder(SpringRestClient.builder())
+                            .httpClientBuilder(StreamingHttpClientConfig.builder())
                             .build();
             var fixture = new VueProjectTest();
             String first =
