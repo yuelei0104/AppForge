@@ -75,3 +75,9 @@ git commit -m "refactor: run backend directly from its source root"
 版本管理、私有/公开权限、标签搜索、停止生成、部署下线与精选审核的升级步骤见 [应用工作台扩展](docs/03-app-workspace.md)。已有数据库必须先执行其中的一次性升级 SQL，再重启后端。
 
 对话轮数统计、Markdown 导出与智能记忆摘要的升级、使用和验证方式见 [对话扩展说明](docs/05-chat-conversation-extensions.md)。
+
+## 自动应用封面
+
+生成、版本恢复和部署后自动排队截图，支持有限重试、版本隔离、私有图片读取、手动重新生成、自定义封面和资源清理。失败保留原图或显示默认占位。
+
+已有数据库先执行 `sql/migrations/20261110_app_cover.sql`，配置 COS 与 Chrome 后设置 `APP_COVER_ENABLED=true`。详细步骤见 [封面启用与验证](docs/08-app-cover.md)，架构约束见 [任务设计](docs/07-app-cover-design.md)。

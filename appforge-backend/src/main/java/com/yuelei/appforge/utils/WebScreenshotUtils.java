@@ -4,11 +4,14 @@ import cn.hutool.core.img.ImgUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+
 import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.exception.ErrorCode;
+
 import io.github.bonigarcia.wdm.WebDriverManager;
-import jakarta.annotation.PreDestroy;
+
 import lombok.extern.slf4j.Slf4j;
+
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
@@ -29,28 +32,13 @@ import java.util.UUID;
 @Slf4j
 public class WebScreenshotUtils {
 
-    private static final WebDriver webDriver;
-
     private static final HttpClient httpClient =
             HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(5))
                     .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
 
-    static {
-        final int DEFAULT_WIDTH = 1600;
-        final int DEFAULT_HEIGHT = 900;
-        webDriver = initChromeDriver(DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    }
-
-    @PreDestroy
-    public void destroy() {
-        webDriver.quit();
-    }
-
-    /**
-     * 初始化 Chrome 浏览器驱动
-     */
+    /** 初始化 Chrome 浏览器驱动 */
     private static WebDriver initChromeDriver(int width, int height) {
         try {
             WebDriverManager.chromedriver().setup();
@@ -113,9 +101,7 @@ public class WebScreenshotUtils {
         }
     }
 
-    /**
-     * 截图前先确认页面真实可访问，避免把 Chrome 的 ERR_CONNECTION_REFUSED 错误页当成封面。
-     */
+    /** 截图前先确认页面真实可访问，避免把 Chrome 的 ERR_CONNECTION_REFUSED 错误页当成封面。 */
     private static boolean isPageReachable(String webUrl) {
         try {
             HttpRequest request =
@@ -136,9 +122,7 @@ public class WebScreenshotUtils {
         }
     }
 
-    /**
-     * 检查 Chrome 是否显示了“无法访问此网站”等错误页。
-     */
+    /** 检查 Chrome 是否显示了“无法访问此网站”等错误页。 */
     private static boolean isErrorPage(WebDriver driver) {
         try {
             String title = driver.getTitle();
@@ -167,7 +151,7 @@ public class WebScreenshotUtils {
      * @param webUrl 网页URL
      * @return 压缩后的截图文件路径，失败返回 null
      */
-    public static synchronized String saveWebPageScreenshot(String webUrl) {
+    public static String saveWebPageScreenshot(String webUrl) {
         if (StrUtil.isBlank(webUrl)) {
             log.error("网页URL不能为空");
             return null;
@@ -176,7 +160,9 @@ public class WebScreenshotUtils {
         if (!isPageReachable(webUrl)) {
             return null;
         }
+        WebDriver webDriver = null;
         try {
+            webDriver = initChromeDriver(1600, 900);
             String rootPath =
                     System.getProperty("user.dir")
                             + File.separator
@@ -216,6 +202,12 @@ public class WebScreenshotUtils {
         } catch (Exception e) {
             log.error("网页截图失败: {}", webUrl, e);
             return null;
+        } finally {
+            if (webDriver != null)
+                try {
+                    webDriver.quit();
+                } catch (RuntimeException ignored) {
+                }
         }
     }
 }

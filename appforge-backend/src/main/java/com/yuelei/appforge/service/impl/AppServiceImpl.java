@@ -24,7 +24,6 @@ import com.yuelei.appforge.model.vo.AppVO;
 import com.yuelei.appforge.model.vo.UserVO;
 import com.yuelei.appforge.service.AppService;
 import com.yuelei.appforge.service.ChatHistoryService;
-import com.yuelei.appforge.service.ScreenshotService;
 import com.yuelei.appforge.service.UserService;
 import com.yuelei.appforge.workspace.*;
 
@@ -32,7 +31,6 @@ import jakarta.annotation.Resource;
 
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import reactor.core.publisher.Flux;
@@ -68,11 +66,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource private ChatHistoryService chatHistoryService;
 
-    @Value("${app.screenshot.base-url:http://127.0.0.1:8123/api}")
-    private String screenshotBaseUrl;
-
-    @Resource
-    private ScreenshotService screenshotService;
+    @Resource private com.yuelei.appforge.cover.AppCoverTasks coverTasks;
+    @Resource private org.springframework.transaction.support.TransactionTemplate coverTransaction;
 
     @Override
     public long addApp(AppAddRequest appAddRequest, User loginUser) {
@@ -140,6 +135,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setUserId(loginUser.getId());
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "创建应用失败");
+        if (coverTasks != null && cover != null) coverTasks.manualChanged(app.getId());
         log.info("创建应用成功 appId={}, codeGenType={}", app.getId(), codeGenType);
         if (StrUtil.isBlank(appAddRequest.getAppName()))
             names.suggest(app.getId(), initPrompt, appName);
@@ -165,7 +161,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App updateApp = new App();
         updateApp.setId(app.getId());
         updateApp.setAppName(appName);
-        if (appUpdateRequest.getCover() != null) {
+        if (appUpdateRequest.getCover() != null
+                && (coverTasks == null
+                        || !coverTasks.isCurrentImageUrl(
+                                app.getId(), appUpdateRequest.getCover()))) {
             updateApp.setCover(validateCover(appUpdateRequest.getCover()));
         }
         applyMetadata(
@@ -174,7 +173,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 appUpdateRequest.getTags(),
                 appUpdateRequest.getVisibility());
         updateApp.setEditTime(LocalDateTime.now());
-        boolean result = this.updateById(updateApp);
+        boolean result = updateWithCover(updateApp);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "更新应用失败");
         return true;
     }
@@ -268,7 +267,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             updateApp.setAppName(appName);
             hasUpdate = true;
         }
-        if (appAdminUpdateRequest.getCover() != null) {
+        if (appAdminUpdateRequest.getCover() != null
+                && (coverTasks == null
+                        || !coverTasks.isCurrentImageUrl(
+                                app.getId(), appAdminUpdateRequest.getCover()))) {
             updateApp.setCover(validateCover(appAdminUpdateRequest.getCover()));
             hasUpdate = true;
         }
@@ -304,7 +306,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
 
         updateApp.setEditTime(LocalDateTime.now());
-        boolean result = this.updateById(updateApp);
+        boolean result = updateWithCover(updateApp);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "更新应用失败");
         return true;
     }
@@ -344,6 +346,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             UserVO userVO = userService.getUserVO(user);
             appVO.setUser(userVO);
         }
+        if (coverTasks != null) coverTasks.decorate(List.of(appVO));
         return appVO;
     }
 
@@ -357,20 +360,23 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Map<Long, UserVO> userVOMap =
                 userService.listByIds(userIds).stream()
                         .collect(Collectors.toMap(User::getId, userService::getUserVO));
-        return appList.stream()
-                .map(
-                        app -> {
-                            AppVO appVO = new AppVO();
-                            BeanUtil.copyProperties(app, appVO, "tags");
-                            appVO.setTags(AppPolicy.decodeTags(app.getTags()));
-                            // 列表不返回初始提示词或模型错误，减少公开信息暴露。
-                            appVO.setInitPrompt(null);
-                            appVO.setGenerationError(null);
-                            UserVO userVO = userVOMap.get(app.getUserId());
-                            appVO.setUser(userVO);
-                            return appVO;
-                        })
-                .collect(Collectors.toList());
+        List<AppVO> views =
+                appList.stream()
+                        .map(
+                                app -> {
+                                    AppVO appVO = new AppVO();
+                                    BeanUtil.copyProperties(app, appVO, "tags");
+                                    appVO.setTags(AppPolicy.decodeTags(app.getTags()));
+                                    // 列表不返回初始提示词或模型错误，减少公开信息暴露。
+                                    appVO.setInitPrompt(null);
+                                    appVO.setGenerationError(null);
+                                    UserVO userVO = userVOMap.get(app.getUserId());
+                                    appVO.setUser(userVO);
+                                    return appVO;
+                                })
+                        .collect(Collectors.toList());
+        if (coverTasks != null) coverTasks.decorate(views);
+        return views;
     }
 
     @Override
@@ -574,67 +580,31 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 });
     }
 
-//    @Override
-//    public String deployApp(Long appId, User loginUser) {
-//        ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR);
-//        App app = getAppById(appId);
-//        AppPolicy.owner(app, loginUser);
-//        return workspace.deploy(appId, loginUser);
-//    }
     @Override
     public String deployApp(Long appId, User loginUser) {
         ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR);
-
-        App app = getAppById(appId);
-        AppPolicy.owner(app, loginUser);
-
-        // 1. 部署成功，获得部署标识
-        String deployKey = workspace.deploy(appId, loginUser);
-
-        // 2. 拼接截图程序能够访问的网站地址
-        String appDeployUrl = screenshotBaseUrl.replaceAll("/+$", "")
-            + "/deploy/" + deployKey + "/";
-
-        // 3. 异步截图、上传 COS，并更新应用封面
-        generateAppScreenshotAsync(appId, appDeployUrl);
-
-        // 4. 保持现有接口的返回约定
-        return deployKey;
+        AppPolicy.owner(getAppById(appId), loginUser);
+        return workspace.deploy(appId, loginUser);
     }
 
-
-    /**
-     * 异步生成应用截图并更新封面
-     *
-     * @param appId  应用ID
-     * @param appUrl 应用访问URL
-     */
+    /** Compatibility entry point: screenshot targets are always fixed database versions. */
     @Override
-    public void generateAppScreenshotAsync(Long appId, String appUrl) {
-        // 使用虚拟线程异步执行
-        Thread.startVirtualThread(() -> {
-            try {
-                // 调用截图服务生成截图并上传
-                String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
-                if (StrUtil.isBlank(screenshotUrl)) {
-                    log.warn("封面生成失败，保留原封面 appId={}, url={}", appId, appUrl);
-                    return;
-                }
-                // 更新应用封面字段
-                App updateApp = new App();
-                updateApp.setId(appId);
-                updateApp.setCover(screenshotUrl);
-                boolean updated = this.updateById(updateApp);
-                if (!updated) {
-                    log.warn("封面更新失败 appId={}, cover={}", appId, screenshotUrl);
-                }
-            } catch (RuntimeException e) {
-                // 异步线程不能抛出未捕获异常；失败时保留原封面。
-                log.warn("生成应用封面失败 appId={}, url={}", appId, appUrl, e);
-            }
-        });
+    public void generateAppScreenshotAsync(Long appId, String ignoredUrl) {
+        App app = getAppById(appId);
+        coverTasks.enqueue(
+                appId, app.getCurrentVersion() == null ? 0 : app.getCurrentVersion(), "REPAIR");
     }
 
+    private boolean updateWithCover(App update) {
+        if (coverTasks == null || !coverTasks.enabled() || update.getCover() == null)
+            return this.updateById(update);
+        return Boolean.TRUE.equals(
+                coverTransaction.execute(
+                        status -> {
+                            coverTasks.manualChanged(update.getId());
+                            return this.updateById(update);
+                        }));
+    }
 
     /**
      * 删除应用时关联删除对话历史

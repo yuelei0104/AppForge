@@ -2,7 +2,9 @@ package com.yuelei.appforge.config;
 
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+
 import lombok.Data;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,9 +18,7 @@ public class ReasoningStreamingChatModelConfig {
 
     private String apiKey;
 
-    /**
-     * 推理流式模型（用于 Vue 项目生成，带工具调用）
-     */
+    /** 推理流式模型（用于 Vue 项目生成，带工具调用） */
     @Bean
     public StreamingChatModel reasoningStreamingChatModel() {
         // 为了测试方便临时修改
@@ -28,12 +28,13 @@ public class ReasoningStreamingChatModelConfig {
         // final String modelName = "deepseek-reasoner";
         // final int maxTokens = 32768;
         return OpenAiStreamingChatModel.builder()
-            .apiKey(apiKey)
-            .baseUrl(baseUrl)
-            .modelName(modelName)
-            .maxTokens(maxTokens)
-            .logRequests(true)
-            .logResponses(true)
-            .build();
+                .httpClientBuilder(StreamingHttpClientConfig.builder())
+                .apiKey(apiKey)
+                .baseUrl(baseUrl)
+                .modelName(modelName)
+                .maxTokens(maxTokens)
+                .logRequests(true)
+                .logResponses(true)
+                .build();
     }
 }
