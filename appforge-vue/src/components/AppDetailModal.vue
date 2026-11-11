@@ -5,6 +5,7 @@ import AppCoverControls from '@/components/AppCoverControls.vue'
 import UserInfo from '@/components/UserInfo.vue'
 import { generationLabel, featureLabel, isOnline } from '@/utils/appStatus'
 import { formatDateTime } from '@/utils/date'
+import { codeGenTypeLabel } from '@/config/codeGenType'
 
 defineProps<{
   open: boolean
@@ -55,6 +56,10 @@ const emit = defineEmits<{
       >
       <a-descriptions-item label="创建时间">
         {{ formatDateTime(app.createTime) }}
+      </a-descriptions-item>
+      <a-descriptions-item label="生成类型">
+        <a-tag v-if="app.codeGenType" color="blue">{{ codeGenTypeLabel(app.codeGenType) }}</a-tag>
+        <span v-else>未知类型</span>
       </a-descriptions-item>
     </a-descriptions>
 
