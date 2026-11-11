@@ -7,7 +7,6 @@ import {
 import { validateMarkdownExport } from '@/utils/chatExport'
 import ChatMemoryModal from '@/components/ChatMemoryModal.vue'
 import GenerationProgress from '@/components/GenerationProgress.vue'
-import request from '@/request'
 import { prependHistory, oldestCursor, updateProgress, type ChatMessage } from '@/utils/chatHistory'
 import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
 import { generationLabel } from '@/utils/appStatus'
@@ -104,7 +103,7 @@ function openMemory() {
 }
 const downloadingSource = ref(false)
 async function downloadSource() {
-  if (!canManage.value || downloadingSource.value) return
+  if (!isOwner.value || downloadingSource.value) return
   const id = appId.value,
     sequence = loadSequence
   const controller = new AbortController()
@@ -112,25 +111,59 @@ async function downloadSource() {
   sourceAbort = controller
   downloadingSource.value = true
   try {
-    const res = await request<Blob>('/app/source/download', {
-      params: { appId: id },
-      responseType: 'blob',
+    // 后端直接返回 ZIP 文件流，必须用原生 fetch 才能拿到响应头和二进制内容。
+    const downloadUrl = `${API_BASE_URL}/app/download/${encodeURIComponent(id)}`
+    const sourceUrl = `${API_BASE_URL}/app/source/download?appId=${encodeURIComponent(id)}`
+    let response = await fetch(downloadUrl, {
+      method: 'GET',
+      credentials: 'include',
       signal: controller.signal,
     })
-    if (sequence !== loadSequence || controller.signal.aborted) return
-    if (!String(res.headers['content-type']).includes('application/zip')) {
-      const error = JSON.parse(await res.data.text()) as { message?: string }
-      throw new Error(error.message || '源码下载失败')
+    // 兼容仅保存在 workspace 版本目录中的应用：旧下载接口没有对应目录时改用源码接口。
+    if (!response.ok) {
+      response = await fetch(sourceUrl, {
+        method: 'GET',
+        credentials: 'include',
+        signal: controller.signal,
+      })
     }
-    const url = URL.createObjectURL(res.data),
-      link = document.createElement('a')
+    if (!response.ok) {
+      let errorMessage = `下载失败（${response.status}）`
+      try {
+        const body = (await response.json()) as { message?: string }
+        errorMessage = body.message || errorMessage
+      } catch {
+        /* 非 JSON 错误响应保留状态码提示 */
+      }
+      throw new Error(errorMessage)
+    }
+    if (sequence !== loadSequence || controller.signal.aborted) return
+
+    const disposition = response.headers.get('Content-Disposition') || ''
+    const match = disposition.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
+    let fileName = `app-${id}.zip`
+    if (match?.[1]) {
+      try {
+        fileName = decodeURIComponent(match[1])
+      } catch {
+        fileName = match[1]
+      }
+    }
+
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
     link.href = url
-    link.download = `app-${id}-source.zip`
+    link.download = fileName
+    document.body.appendChild(link)
     link.click()
+    link.remove()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
+    message.success('代码下载成功')
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
     if (sequence === loadSequence && !controller.signal.aborted)
-      message.error(error instanceof Error ? error.message : '源码下载失败')
+      message.error(error instanceof Error ? error.message : '代码下载失败')
   } finally {
     if (sequence === loadSequence) downloadingSource.value = false
   }
@@ -806,12 +839,14 @@ onBeforeUnmount(() => {
 
       <div class="app-chat-page__topbar-actions">
         <a-button
-          v-if="canManage"
+          v-if="isOwner"
           :loading="downloadingSource"
           :disabled="!app?.currentVersion"
           @click="downloadSource"
-          >{{ app?.codeGenType === 'vue_project' ? '下载工程' : '下载源码' }}</a-button
         >
+          <template #icon><DownloadOutlined /></template>
+          下载代码
+        </a-button>
         <a-button v-if="canManage" :loading="exporting" @click="handleExport"
           ><template #icon><DownloadOutlined /></template>导出对话</a-button
         >

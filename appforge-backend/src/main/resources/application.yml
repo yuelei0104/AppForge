@@ -76,8 +76,8 @@ logging:
 cos:
   client:
     host: https://appforge-1317627961.cos.ap-shanghai.myqcloud.com
-    secretId: ${COS_SECRET_ID}
-    secretKey: ${COS_SECRET_KEY}
+    secretId: ${TENCENT_CLOUD_SECRET_ID}
+    secretKey: ${TENCENT_CLOUD_SECRET_KEY}
     region: ap-shanghai
     bucket: appforge-1317627961
 
