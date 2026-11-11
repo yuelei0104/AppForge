@@ -10,7 +10,7 @@ import GenerationProgress from '@/components/GenerationProgress.vue'
 import { prependHistory, oldestCursor, updateProgress, type ChatMessage } from '@/utils/chatHistory'
 import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
 import { generationLabel } from '@/utils/appStatus'
-import { generationModeLabel } from '@/utils/generationMode'
+import { codeGenTypeLabel } from '@/config/codeGenType'
 import VersionHistoryDrawer from '@/components/VersionHistoryDrawer.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -801,6 +801,19 @@ onBeforeUnmount(() => {
           </template>
         </a-dropdown>
 
+        <a-tag
+          v-if="app?.codeGenType"
+          aria-label="当前生成类型"
+          class="code-gen-type-tag"
+          color="blue"
+          :title="
+            app.codeGenType === 'vue_project'
+              ? '构建成功后可下载完整工程'
+              : '此模式可下载原生网页源码；完整网站工程包含独立工程配置'
+          "
+          >{{ codeGenTypeLabel(app.codeGenType) }}</a-tag
+        >
+
         <a-tooltip
           v-if="canManage"
           :title="
@@ -820,17 +833,6 @@ onBeforeUnmount(() => {
             >{{ statistics ? `对话 ${statistics.roundCount} 轮` : '轮数待加载' }}</a-tag
           >
         </a-tooltip>
-        <a-tag
-          v-if="app"
-          aria-label="当前生成模式"
-          :color="app.codeGenType === 'vue_project' ? 'purple' : 'default'"
-          :title="
-            app.codeGenType === 'vue_project'
-              ? '构建成功后可下载完整工程'
-              : '此模式可下载原生网页源码；完整网站工程包含独立工程配置'
-          "
-          >{{ generationModeLabel(app.codeGenType) }}</a-tag
-        >
         <a-tag :color="isGenerating ? 'processing' : 'default'"
           >{{ generationLabel(app?.generationStatus)
           }}<template v-if="app?.currentVersion"> · v{{ app.currentVersion }}</template></a-tag
@@ -1172,6 +1174,12 @@ onBeforeUnmount(() => {
 .app-chat-page__app-name span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.code-gen-type-tag {
+  flex: none;
+  margin-inline-end: 0;
+  font-size: 12px;
 }
 
 .app-chat-page__status {
