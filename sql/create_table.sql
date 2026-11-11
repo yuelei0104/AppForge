@@ -38,6 +38,12 @@ create table if not exists app
   id           bigint auto_increment comment 'id' primary key,
   appName      varchar(256)                       null comment '应用名称',
   cover        varchar(512)                       null comment '应用封面',
+    coverMode varchar(16) NOT NULL DEFAULT 'AUTO',
+    coverStatus varchar(16) NOT NULL DEFAULT 'NONE',
+    coverVersion int NOT NULL DEFAULT 0,
+    coverRevision bigint NOT NULL DEFAULT 0,
+    coverObjectKey varchar(512) NULL,
+    coverTaskId bigint NULL,
   initPrompt   text                               null comment '应用初始化的 prompt',
   codeGenType  varchar(64)                        null comment '代码生成类型（枚举）',
   deployKey    varchar(64)                        null comment '部署标识',
@@ -106,3 +112,25 @@ CREATE TABLE IF NOT EXISTS chat_memory_summary (
  revision bigint NOT NULL DEFAULT 0,
  updatedTime datetime NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE app_cover_task (
+ id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ appId bigint NOT NULL,versionNo int NOT NULL,revision bigint NOT NULL,
+ profile varchar(32) NOT NULL DEFAULT 'desktop-v1',requestId varchar(64) NULL,requestedBy bigint NULL,
+ triggerType varchar(16) NOT NULL,status varchar(16) NOT NULL DEFAULT 'PENDING',attempts int NOT NULL DEFAULT 0,
+ nextRunTime datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),executionToken varchar(64) NULL,
+ workerId varchar(128) NULL,leaseUntil datetime(3) NULL,renderTokenHash varchar(64) NULL,
+ renderTokenExpiresAt datetime(3) NULL,objectKey varchar(512) NULL,
+ errorCode varchar(64) NOT NULL DEFAULT '',errorMessage varchar(512) NOT NULL DEFAULT '',
+ createTime datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ updateTime datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+ UNIQUE KEY uk_cover_request(appId,versionNo,revision,profile),UNIQUE KEY uk_cover_manual(appId,requestId),
+ KEY idx_cover_due(status,nextRunTime,id),KEY idx_cover_lease(status,leaseUntil),
+ KEY idx_cover_app(appId,id),KEY idx_cover_user(requestedBy,createTime)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE app_cover_cleanup (
+ id bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,objectKey varchar(512) NOT NULL,
+ notBefore datetime(3) NOT NULL,nextRunTime datetime(3) NOT NULL,attempts int NOT NULL DEFAULT 0,
+ createTime datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ UNIQUE KEY uk_cover_object(objectKey),KEY idx_cover_cleanup(nextRunTime,notBefore)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -51,6 +51,11 @@ public class CosClientConfig {
         COSCredentials cred = new BasicCOSCredentials(secretId, secretKey);
         // 设置bucket的区域, COS地域的简称请参照 https://www.qcloud.com/document/product/436/6224
         ClientConfig clientConfig = new ClientConfig(new Region(region));
+        clientConfig.setConnectionTimeout(5000);
+        clientConfig.setConnectionRequestTimeout(5000);
+        clientConfig.setSocketTimeout(15000);
+        clientConfig.setRequestTimeout(20000);
+        clientConfig.setMaxErrorRetry(0);
         // 生成cos客户端
         return new COSClient(cred, clientConfig);
     }
