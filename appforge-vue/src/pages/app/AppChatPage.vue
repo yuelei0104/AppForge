@@ -29,6 +29,7 @@ import {
   CodeOutlined,
   EyeOutlined,
   CloseOutlined,
+  MenuFoldOutlined,
   FileTextOutlined,
   BulbOutlined,
   StopOutlined,
@@ -1346,7 +1347,8 @@ onBeforeUnmount(() => {
               type="button"
               class="preview-panel__tab"
               :class="{ 'preview-panel__tab--active': activePanel === 'code' }"
-              @click="activePanel = 'code'"
+              :title="activePanel === 'code' ? '收起代码' : '展开代码'"
+              @click="activePanel = activePanel === 'code' ? 'preview' : 'code'"
             >
               <CodeOutlined />代码
             </button>
@@ -1362,6 +1364,11 @@ onBeforeUnmount(() => {
               <template #icon><EditOutlined /></template>{{ isEditMode ? '退出编辑' : '编辑模式' }}
             </a-button>
             <a-button v-if="previewVisible" size="small" @click="openPreview">新窗口打开</a-button>
+          </div>
+          <div v-else class="preview-panel__actions">
+            <a-button size="small" @click="activePanel = 'preview'">
+              <template #icon><MenuFoldOutlined /></template>收起代码
+            </a-button>
           </div>
         </div>
         <div class="preview-panel__body">
