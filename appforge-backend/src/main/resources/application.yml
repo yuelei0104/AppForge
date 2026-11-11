@@ -62,7 +62,7 @@ langchain4j:
       base-url: https://api.deepseek.com
       api-key: sk-08fffb88ea1942b8b1b0559e1da77838
       model-name: deepseek-flash
-      max-tokens: 8192
+      max-tokens: 16384
       log-requests: true
       log-responses: true
       reasoning-effort: none

@@ -6,15 +6,22 @@ import dev.langchain4j.model.chat.*;
 import dev.langchain4j.model.chat.request.*;
 import dev.langchain4j.model.chat.response.*;
 import dev.langchain4j.model.output.FinishReason;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** 为完整的多轮工具调用分配小于 20000 的输出 Token 总预算。 */
+/** 为完整的多轮工具调用分配输出 Token 预算。 */
 final class BudgetedStreamingModel implements StreamingChatModel {
+    private static final Logger log = LoggerFactory.getLogger(BudgetedStreamingModel.class);
+
+    private static final int MAX_TOTAL_OUTPUT_TOKENS = 60_000;
+    private static final int MAX_OUTPUT_TOKENS_PER_ROUND = 16_384;
+
     private final StreamingChatModel delegate;
     private final ProjectTask task;
-    private int remaining = 19900;
+    private int remaining = MAX_TOTAL_OUTPUT_TOKENS;
 
     BudgetedStreamingModel(StreamingChatModel delegate, ProjectTask task) {
         this.delegate = delegate;
@@ -39,7 +46,10 @@ final class BudgetedStreamingModel implements StreamingChatModel {
                 request.parameters()
                         .overrideWith(
                                 ChatRequestParameters.builder()
-                                        .maxOutputTokens(Math.min(8192, remaining))
+                                        .maxOutputTokens(
+                                                Math.min(
+                                                        MAX_OUTPUT_TOKENS_PER_ROUND,
+                                                        remaining))
                                         .build());
         AtomicBoolean ended = new AtomicBoolean();
         delegate.chat(
@@ -94,10 +104,6 @@ final class BudgetedStreamingModel implements StreamingChatModel {
                         if (!ended.compareAndSet(false, true)) return;
                         try {
                             task.check();
-                            ThrowUtils.throwIf(
-                                    response.finishReason() == FinishReason.LENGTH,
-                                    ErrorCode.OPERATION_ERROR,
-                                    "模型输出不完整，本次未保存");
                             Integer used =
                                     response.tokenUsage() == null
                                             ? null
@@ -118,6 +124,18 @@ final class BudgetedStreamingModel implements StreamingChatModel {
                                                                 * 64
                                                         : 0);
                             }
+                            if (response.finishReason() == FinishReason.LENGTH) {
+                                log.warn(
+                                        "模型输出被截断：finishReason=LENGTH, outputTokens={},"
+                                                + " remainingBefore={}, maxThisRound={}",
+                                        used,
+                                        remaining,
+                                        Math.min(MAX_OUTPUT_TOKENS_PER_ROUND, remaining));
+                            }
+                            ThrowUtils.throwIf(
+                                    response.finishReason() == FinishReason.LENGTH,
+                                    ErrorCode.OPERATION_ERROR,
+                                    "模型输出不完整，本次未保存");
                             ThrowUtils.throwIf(
                                     used < 0 || used > remaining,
                                     ErrorCode.OPERATION_ERROR,

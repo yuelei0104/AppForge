@@ -199,7 +199,7 @@ class VueProjectTest {
                                             : message.hasToolExecutionRequests()
                                                     ? FinishReason.TOOL_EXECUTION
                                                     : FinishReason.STOP)
-                            .tokenUsage(new TokenUsage(10, budgetExceeded ? 20000 : 100))
+                            .tokenUsage(new TokenUsage(10, budgetExceeded ? 60001 : 100))
                             .build());
         }
     }
@@ -344,7 +344,8 @@ class VueProjectTest {
                                                     && e.path().equals("src/App.vue")
                                                     && e.state().equals("SUCCEEDED")));
             assertEquals(3, model.calls);
-            assertTrue(model.budgets.stream().allMatch(n -> n > 0 && n <= 8192));
+            assertEquals(16384, model.budgets.getFirst());
+            assertTrue(model.budgets.stream().allMatch(n -> n > 0 && n <= 16384));
             assertEquals(
                     "read_directory",
                     JSONUtil.parseObj(JSONUtil.toJsonStr(events.getFirst().toMap()))
