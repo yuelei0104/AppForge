@@ -99,7 +99,7 @@ class VueToolStreamingTest {
                             new StreamHandlerExecutor()
                                     .doExecute(
                                             TokenStreamFluxAdapter.adapt(
-                                                    service.generate("写两个组件"), task),
+                                                    service.create("写两个组件"), task),
                                             CodeGenTypeEnum.VUE_PROJECT,
                                             history::append)
                                     .doOnNext(
@@ -283,7 +283,11 @@ class VueToolStreamingTest {
                 new VueProjectRunner() {
                     @Override
                     public Flux<String> stream(
-                            long id, long before, String request, ProjectTask task) {
+                            long id,
+                            long before,
+                            String request,
+                            ProjectTask task,
+                            GenerationMode mode) {
                         entered.countDown();
                         return Flux.never();
                     }

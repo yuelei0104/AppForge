@@ -9,6 +9,7 @@ import com.yuelei.appforge.constant.AppConstant;
 import com.yuelei.appforge.constant.UserConstant;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.dto.app.*;
+import com.yuelei.appforge.model.dto.chat.ChatRequest;
 import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.model.vo.AppVO;
@@ -28,6 +29,7 @@ import reactor.core.Disposable;
 import reactor.core.publisher.*;
 
 import java.io.File;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -37,6 +39,7 @@ public class AppController {
     @Resource private AppService appService;
     @Resource private UserService userService;
     @Resource private AppWorkspaceService workspace;
+    @Resource private ChatTicketService chatTicketService;
 
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
@@ -153,10 +156,49 @@ public class AppController {
                 .body(new org.springframework.core.io.ByteArrayResource(bytes.toByteArray()));
     }
 
+    /**
+     * 用普通 POST 换取一次性 SSE 票据，避免把长消息、附件 id 和选中元素塞进 EventSource URL。
+     */
+    @PostMapping("/chat/request")
+    public BaseResponse<Map<String, String>> createChatRequest(
+            @RequestBody ChatRequest body, HttpServletRequest request) {
+        ThrowUtils.throwIf(body == null || body.appId() == null, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(
+                body.message() == null
+                        || body.message().isBlank()
+                        || body.message().length() > 2000,
+                ErrorCode.PARAMS_ERROR,
+                "消息为 1 至 2000 字");
+        User user = userService.getLoginUser(request);
+        appService.getAppVOById(body.appId(), user);
+        return ResultUtils.success(Map.of("requestId", chatTicketService.create(body, user)));
+    }
+
     /** SSE 错误始终以事件返回，避免异常处理器将 JSON 写入 text/event-stream。 */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatToGenCode(
-            @RequestParam Long appId, @RequestParam String message, HttpServletRequest request) {
+            @RequestParam(required = false) Long appId,
+            @RequestParam(required = false) String message,
+            @RequestParam(required = false) String requestId,
+            HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        List<Long> attachmentIds = java.util.List.of();
+        String element = null;
+        if (requestId != null && !requestId.isBlank()) {
+            ChatRequest ticket = chatTicketService.consume(requestId, loginUser);
+            appId = ticket.appId();
+            message = ticket.message();
+            attachmentIds = ticket.attachmentIds() == null ? List.of() : ticket.attachmentIds();
+            element = ticket.element();
+        }
+        ThrowUtils.throwIf(
+                appId == null || appId <= 0 || message == null || message.isBlank(),
+                ErrorCode.PARAMS_ERROR,
+                "应用 ID 或消息无效");
+        final Long requestAppId = appId;
+        final String finalMessage = message;
+        final List<Long> finalAttachmentIds = attachmentIds;
+        final String finalElement = element;
         SseEmitter emitter =
                 new SseEmitter(0L) {
                     @Override
@@ -184,14 +226,30 @@ public class AppController {
                 Flux.defer(
                         () ->
                                 appService.chatToGenCode(
-                                        appId,
-                                        message,
-                                        userService.getLoginUser(request),
+                                        requestAppId,
+                                        finalMessage,
+                                        loginUser,
+                                        finalAttachmentIds,
+                                        finalElement,
                                         event -> {
                                             try {
                                                 emitter.send(
                                                         SseEmitter.event()
                                                                 .name("progress")
+                                                                .data(
+                                                                        JSONUtil.toJsonStr(event.toMap()),
+                                                                        MediaType
+                                                                                .APPLICATION_JSON));
+                                            } catch (Exception closed) {
+                                                throw new BusinessException(
+                                                        ErrorCode.OPERATION_ERROR, "连接已关闭");
+                                            }
+                                        },
+                                        event -> {
+                                            try {
+                                                emitter.send(
+                                                        SseEmitter.event()
+                                                                .name("file")
                                                                 .data(
                                                                         JSONUtil.toJsonStr(event.toMap()),
                                                                         MediaType
@@ -242,10 +300,18 @@ public class AppController {
                         },
                         () -> {
                             try {
+                                var current = appService.getById(requestAppId);
+                                int version =
+                                        current != null && current.getCurrentVersion() != null
+                                                ? current.getCurrentVersion()
+                                                : 0;
                                 emitter.send(
                                         SseEmitter.event()
                                                 .name("done")
-                                                .data("{}", MediaType.APPLICATION_JSON));
+                                                .data(
+                                                        JSONUtil.toJsonStr(
+                                                                Map.of("version", version)),
+                                                        MediaType.APPLICATION_JSON));
                             } catch (Exception closed) {
                                 /* 客户端已经断开。 */
                             }

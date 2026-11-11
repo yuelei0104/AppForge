@@ -1,8 +1,12 @@
 package com.yuelei.appforge.workspace.vue;
 
 import com.yuelei.appforge.exception.*;
+import com.yuelei.appforge.workspace.FileChangeEvent;
+import com.yuelei.appforge.workspace.FileOperation;
+import com.yuelei.appforge.workspace.GenerationMode;
 import com.yuelei.appforge.workspace.GenerationProgress;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.*;
 import java.util.*;
@@ -11,6 +15,9 @@ import java.util.function.Consumer;
 
 /** 每次调用持有独立工作目录，模型只能操作其源码，不能接触其他应用或构建目录。 */
 public final class ProjectTask implements AutoCloseable {
+    /** 单个文件事件的内容上限；超过后由前端在 done 时从版本文件补全。 */
+    public static final int MAX_FILE_EVENT_BYTES = 128 * 1024;
+
     final Path root;
     final AtomicBoolean cancelled = new AtomicBoolean();
     final AtomicReference<Process> process = new AtomicReference<>();
@@ -19,12 +26,24 @@ public final class ProjectTask implements AutoCloseable {
     private final Set<String> read = new HashSet<>();
     private final Instant deadline = Instant.now().plus(Duration.ofMinutes(8));
     private final Consumer<GenerationProgress> progress;
+    private final Consumer<FileChangeEvent> onFileChange;
+    private final GenerationMode mode;
     private boolean listed, sealed;
     private int writes;
     private Map<String, String> result;
 
     public ProjectTask(Map<String, String> previous, Consumer<GenerationProgress> progress) {
+        this(previous, progress, event -> {}, GenerationMode.EDIT);
+    }
+
+    public ProjectTask(
+            Map<String, String> previous,
+            Consumer<GenerationProgress> progress,
+            Consumer<FileChangeEvent> onFileChange,
+            GenerationMode mode) {
         this.progress = progress;
+        this.onFileChange = onFileChange == null ? event -> {} : onFileChange;
+        this.mode = mode == null ? GenerationMode.EDIT : mode;
         root = createRoot();
         try {
             for (var e : VueProjectFiles.sources(previous).entrySet()) {
@@ -105,6 +124,13 @@ public final class ProjectTask implements AutoCloseable {
         check();
         VueProjectFiles.sourcePath(name);
         ThrowUtils.throwIf(sealed, ErrorCode.OPERATION_ERROR, "工程已进入构建阶段");
+        if (mode == GenerationMode.CREATE) {
+            ThrowUtils.throwIf(
+                    files.containsKey(name),
+                    ErrorCode.PARAMS_ERROR,
+                    "创建模式不能覆盖已有工程文件");
+            return;
+        }
         ThrowUtils.throwIf(
                 files.containsKey(name) && (!listed || !read.contains(name)),
                 ErrorCode.PARAMS_ERROR,
@@ -113,19 +139,10 @@ public final class ProjectTask implements AutoCloseable {
 
     public synchronized String write(String name, String content) {
         editing(name);
+        boolean exists = files.containsKey(name);
         String text = VueProjectFiles.normalize(name, content);
-        int count = files.size() + (files.containsKey(name) ? 0 : 1);
-        long size =
-                files.values().stream().mapToLong(String::length).sum()
-                        - files.getOrDefault(name, "").length()
-                        + text.length();
-        ThrowUtils.throwIf(
-                count > VueProjectFiles.MAX_FILES || size > VueProjectFiles.MAX_SOURCE,
-                ErrorCode.PARAMS_ERROR,
-                "工程超出文件数量或内容预算");
-        writeDisk(name, text);
-        files.put(name, text);
-        writes++;
+        store(name, text);
+        emitFile(name, exists ? FileOperation.UPDATE : FileOperation.CREATE, text);
         return "文件已保存";
     }
 
@@ -141,11 +158,15 @@ public final class ProjectTask implements AutoCloseable {
                         || old.indexOf(before) != old.lastIndexOf(before),
                 ErrorCode.PARAMS_ERROR,
                 "待替换文本必须在文件中唯一匹配");
-        return write(name, old.replace(before, after));
+        String text = VueProjectFiles.normalize(name, old.replace(before, after));
+        store(name, text);
+        emitFile(name, FileOperation.UPDATE, text);
+        return "文件已保存";
     }
 
     public synchronized String delete(String name) {
         editing(name);
+        ThrowUtils.throwIf(mode == GenerationMode.CREATE, ErrorCode.PARAMS_ERROR, "创建模式不能删除文件");
         ThrowUtils.throwIf(!files.containsKey(name), ErrorCode.PARAMS_ERROR, "文件不存在");
         String fileName = Path.of(name).getFileName().toString().toLowerCase(Locale.ROOT);
         ThrowUtils.throwIf(
@@ -173,10 +194,37 @@ public final class ProjectTask implements AutoCloseable {
             Files.delete(root.resolve(name));
             files.remove(name);
             writes++;
+            emitFile(name, FileOperation.DELETE, null);
             return "文件已删除";
         } catch (java.io.IOException e) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "删除文件失败");
         }
+    }
+
+    /** 统一做预算校验、落盘和记账，避免 modify 复用 write 时重复发送事件。 */
+    private void store(String name, String text) {
+        int count = files.size() + (files.containsKey(name) ? 0 : 1);
+        long size =
+                files.values().stream().mapToLong(String::length).sum()
+                        - files.getOrDefault(name, "").length()
+                        + text.length();
+        ThrowUtils.throwIf(
+                count > VueProjectFiles.MAX_FILES || size > VueProjectFiles.MAX_SOURCE,
+                ErrorCode.PARAMS_ERROR,
+                "工程超出文件数量或内容预算");
+        writeDisk(name, text);
+        files.put(name, text);
+        writes++;
+    }
+
+    private void emitFile(String name, FileOperation operation, String content) {
+        if (cancelled.get()) return;
+        boolean truncated =
+                content != null
+                        && content.getBytes(StandardCharsets.UTF_8).length
+                                > MAX_FILE_EVENT_BYTES;
+        onFileChange.accept(
+                new FileChangeEvent(name, operation, truncated ? null : content, truncated));
     }
 
     private void writeDisk(String name, String text) {

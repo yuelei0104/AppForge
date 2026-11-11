@@ -25,9 +25,11 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
+    <jedis.version>7.2.1</jedis.version>
     <!-- 统一管理 langchain4j 版本 -->
     <langchain4j.version>1.11.11</langchain4j.version>
     <langchain4j.beta.version>1.11.11-beta19</langchain4j.beta.version>
+    <tika.version>3.2.3</tika.version>
   </properties>
 
   <dependencies>
@@ -135,6 +137,13 @@
       <version>1.11.0-beta19</version>
     </dependency>
 
+    <!-- LangChain4j Redis 记忆依赖 Jedis 7.x 的 AbstractPipeline API，显式锁定版本避免被旧依赖覆盖 -->
+    <dependency>
+      <groupId>redis.clients</groupId>
+      <artifactId>jedis</artifactId>
+      <version>${jedis.version}</version>
+    </dependency>
+
     <dependency>
       <groupId>com.github.ben-manes.caffeine</groupId>
       <artifactId>caffeine</artifactId>
@@ -167,6 +176,18 @@
       <groupId>com.qcloud</groupId>
       <artifactId>cos_api</artifactId>
       <version>5.6.227</version>
+    </dependency>
+
+    <!-- 文档文本提取：Word/PDF/文本等统一用 Tika 解析 -->
+    <dependency>
+      <groupId>org.apache.tika</groupId>
+      <artifactId>tika-core</artifactId>
+      <version>${tika.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.tika</groupId>
+      <artifactId>tika-parsers-standard-package</artifactId>
+      <version>${tika.version}</version>
     </dependency>
 
   </dependencies>

@@ -49,6 +49,9 @@ public interface AppConstant {
      */
     String CODE_DEPLOY_ROOT_DIR = PROJECT_ROOT_DIR + File.separator + "tmp" + File.separator + "code_deploy";
 
+    /** 附件本地回退目录；COS 不可用时仍可预览和读取。 */
+    String UPLOAD_ROOT_DIR = PROJECT_ROOT_DIR + File.separator + "tmp" + File.separator + "uploads";
+
     /**
      * 解析项目根目录。
      *

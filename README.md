@@ -4,9 +4,9 @@
 
 ## 当前进度
 
-工程骨架与启动代码已准备好，当前采用一个可运行的后端工程。启动类、Java 源码和配置都直接位于 `appforge-backend/src` 下。
+后端位于 `appforge-backend`，前端位于 `appforge-vue`。当前已接入 MySQL、Redis、DeepSeek 与 COS，支持应用生成、在线预览、版本管理、部署、对话记忆和自动封面。
 
-当前提供 `GET /api/health`，用于确认 HTTP 服务可以响应。用户功能、数据库、AI 调用与前端页面仍按阶段开发。
+`GET /api/health` 用于确认 HTTP 服务可以响应；完整功能需要先准备数据库、Redis 和模型 API Key。
 
 ## 项目结构
 
@@ -47,7 +47,7 @@ Wrapper 固定使用 Maven 3.9.9；首次构建需要下载依赖。运行时终
 {"status":"UP","service":"appforge-backend"}
 ```
 
-启动、配置和 JAR 运行方式见 [后端说明](appforge-backend/README.md)。本阶段无需 MySQL、Redis 或 Docker。
+启动、配置和 JAR 运行方式见 [后端说明](appforge-backend/README.md)。运行完整功能需要 MySQL、Redis 和 DeepSeek API Key；COS 与 Chrome 用于附件持久化和自动封面，可按需启用。
 
 ## Git 管理
 
@@ -81,3 +81,16 @@ git commit -m "refactor: run backend directly from its source root"
 生成、版本恢复和部署后自动排队截图，支持有限重试、版本隔离、私有图片读取、手动重新生成、自定义封面和资源清理。失败保留原图或显示默认占位。
 
 已有数据库先执行 `sql/migrations/20261110_app_cover.sql`，配置 COS 与 Chrome 后设置 `APP_COVER_ENABLED=true`。详细步骤见 [封面启用与验证](docs/08-app-cover.md)，架构约束见 [任务设计](docs/07-app-cover-design.md)。
+
+## 生成体验扩展
+
+创建/修改模式分离、SSE `file` 事件与代码视图、图片/文本/文档附件、聊天 ticket 已实现，说明与实施状态见 [生成体验扩展设计](docs/10-generation-experience-design.md)。
+
+已有数据库需执行 `sql/create_table.sql` 中的 `app_attachment` 建表语句。主要接口：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| POST | `/api/file/upload` | 上传聊天附件 |
+| GET | `/api/file/content/{id}` | 读取本人附件（本地回退时） |
+| POST | `/api/app/chat/request` | 换取一次性 SSE ticket |
+| GET | `/api/app/chat/gen/code?requestId=` | 生成 SSE（`progress/file/done`） |

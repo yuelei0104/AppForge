@@ -1,5 +1,6 @@
 package com.yuelei.appforge.ai.tools;
 
+import com.yuelei.appforge.workspace.GenerationMode;
 import com.yuelei.appforge.workspace.vue.ProjectTask;
 
 import org.springframework.stereotype.Component;
@@ -29,6 +30,14 @@ public class ToolManager {
 
     public BaseTool[] getAllTools(ProjectTask task) {
         return tools.values().stream().map(tool -> tool.bind(task)).toArray(BaseTool[]::new);
+    }
+
+    /** 创建模式只暴露写文件和目录读取，避免模型误用修改/删除工具。 */
+    public BaseTool[] getTools(ProjectTask task, GenerationMode mode) {
+        if (mode != GenerationMode.CREATE) return getAllTools(task);
+        return new BaseTool[] {
+            tools.get("writeFile").bind(task), tools.get("readDirectory").bind(task)
+        };
     }
 
     public static ToolManager defaults() {

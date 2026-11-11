@@ -2,6 +2,7 @@ package com.yuelei.appforge.workspace.vue;
 
 import com.yuelei.appforge.ai.AiCodeGeneratorServiceFactory;
 import com.yuelei.appforge.core.AiCodeGeneratorFacade;
+import com.yuelei.appforge.workspace.GenerationMode;
 
 import dev.langchain4j.model.chat.StreamingChatModel;
 
@@ -24,20 +25,36 @@ public class VueProjectRunner {
     @Resource private com.yuelei.appforge.ai.tools.ToolManager toolManager;
 
     public Flux<String> stream(
-            long appId, long currentMessageId, String request, ProjectTask task) {
+            long appId,
+            long currentMessageId,
+            String request,
+            ProjectTask task) {
+        return stream(appId, currentMessageId, request, task, GenerationMode.EDIT);
+    }
+
+    public Flux<String> stream(
+            long appId,
+            long currentMessageId,
+            String request,
+            ProjectTask task,
+            GenerationMode mode) {
         return Flux.defer(
                 () -> {
                     String prompt = facade.contextForProject(request, appId, currentMessageId);
+                    var manager =
+                            toolManager == null
+                                    ? com.yuelei.appforge.ai.tools.ToolManager.defaults()
+                                    : toolManager;
                     var service =
                             factory.vueProjectService(
-                                    (toolManager == null
-                                                    ? com.yuelei.appforge.ai.tools.ToolManager
-                                                            .defaults()
-                                                    : toolManager)
-                                            .getAllTools(task),
+                                    manager.getTools(task, mode),
                                     new BudgetedStreamingModel(streamingChatModel, task));
+                    var stream =
+                            mode == GenerationMode.CREATE
+                                    ? service.create(prompt)
+                                    : service.edit(prompt);
                     return com.yuelei.appforge.core.adapter.TokenStreamFluxAdapter.adapt(
-                                    service.generate(prompt), task)
+                                    stream, task)
                             .concatWith(
                                     Flux.defer(
                                             () -> {

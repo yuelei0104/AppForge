@@ -45,8 +45,15 @@ export function updateProgress(current: ToolProgress[], value: unknown): ToolPro
   return current.map((row, index) => (index === found ? safe : row))
 }
 
+export interface ChatAttachment {
+  name: string
+  kind: string
+  url: string
+}
+
 export interface ChatMessage {
   progress?: ToolProgress[]
+  attachments?: ChatAttachment[]
   id: string
   role: 'user' | 'ai'
   content: string
@@ -81,6 +88,13 @@ export function historyMessages(records: API.ChatHistory[]): ChatMessage[] {
       content: record.message ?? '',
       time: record.createTime?.replace('T', ' ') ?? '',
       status: 'done',
+      attachments: record.attachments
+        ?.filter((item) => item.name && item.url)
+        .map((item) => ({
+          name: item.name as string,
+          kind: item.kind || 'document',
+          url: item.url as string,
+        })),
     }))
 }
 

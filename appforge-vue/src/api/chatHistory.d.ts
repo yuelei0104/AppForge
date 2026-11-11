@@ -7,6 +7,15 @@ declare namespace API {
     messageType?: string
     createTime?: string
     updateTime?: string
+    isDelete?: number
+    attachments?: {
+      id?: string | number
+      kind?: string
+      name?: string
+      mimeType?: string
+      size?: string | number
+      url?: string
+    }[]
   }
 
   type ChatHistoryQueryRequest = {

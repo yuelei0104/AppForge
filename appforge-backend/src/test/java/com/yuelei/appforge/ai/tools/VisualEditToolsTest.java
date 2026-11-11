@@ -150,7 +150,7 @@ class VisualEditToolsTest {
                     };
             new AiCodeGeneratorServiceFactory()
                     .vueProjectService(ToolManager.defaults().getAllTools(task), model)
-                    .generate("修改学校")
+                    .edit("修改学校")
                     .onPartialResponse(s -> {})
                     .onCompleteResponse(r -> complete.complete(r.aiMessage().text()))
                     .onError(complete::completeExceptionally)

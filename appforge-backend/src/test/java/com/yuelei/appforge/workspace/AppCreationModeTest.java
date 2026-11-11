@@ -5,9 +5,11 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.yuelei.appforge.ai.AiCodeGenTypeRoutingService;
 import com.yuelei.appforge.controller.AppController;
 import com.yuelei.appforge.mapper.AppMapper;
 import com.yuelei.appforge.model.entity.App;
+import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.service.UserService;
 import com.yuelei.appforge.service.impl.AppServiceImpl;
 
@@ -48,6 +50,15 @@ class AppCreationModeTest {
             when(users.getById(any(java.io.Serializable.class))).thenReturn(f.owner);
             ReflectionTestUtils.setField(service, "workspace", f.workspace);
             ReflectionTestUtils.setField(service, "userService", users);
+            var routing = mock(AiCodeGenTypeRoutingService.class);
+            when(routing.routeCodeGenType(anyString()))
+                    .thenReturn(
+                            switch (expected) {
+                                case "html" -> CodeGenTypeEnum.HTML;
+                                case "vue_project" -> CodeGenTypeEnum.VUE_PROJECT;
+                                default -> CodeGenTypeEnum.MULTI_FILE;
+                            });
+            ReflectionTestUtils.setField(service, "aiCodeGenTypeRoutingService", routing);
             var controller = new AppController();
             ReflectionTestUtils.setField(controller, "appService", service);
             ReflectionTestUtils.setField(controller, "userService", users);

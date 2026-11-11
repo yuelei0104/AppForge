@@ -72,7 +72,25 @@ public class AppGenerationService {
             Runnable onStarted,
             LongSupplier userMessageId,
             Consumer<GenerationProgress> progress) {
-        return Flux.defer(() -> begin(app, message, onStarted, userMessageId, progress))
+        return generate(app, message, onStarted, userMessageId, progress, event -> {});
+    }
+
+    public Flux<String> generate(
+            App app,
+            String message,
+            Runnable onStarted,
+            LongSupplier userMessageId,
+            Consumer<GenerationProgress> progress,
+            Consumer<FileChangeEvent> onFileChange) {
+        return Flux.defer(
+                        () ->
+                                begin(
+                                        app,
+                                        message,
+                                        onStarted,
+                                        userMessageId,
+                                        progress,
+                                        onFileChange))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -81,9 +99,11 @@ public class AppGenerationService {
             String message,
             Runnable onStarted,
             LongSupplier userMessageId,
-            Consumer<GenerationProgress> progress) {
+            Consumer<GenerationProgress> progress,
+            Consumer<FileChangeEvent> onFileChange) {
         long id = app.getId();
-        workspace.ensureBaseline(id);
+        int baseline = workspace.ensureBaseline(id);
+        GenerationMode mode = baseline > 0 ? GenerationMode.EDIT : GenerationMode.CREATE;
         Job job = new Job();
         ThrowUtils.throwIf(
                 jobs.putIfAbsent(id, job) != null, ErrorCode.OPERATION_ERROR, "该应用正在生成，请先停止");
@@ -100,11 +120,19 @@ public class AppGenerationService {
             ThrowUtils.throwIf(changed != 1, ErrorCode.OPERATION_ERROR, "该应用正在生成，请刷新状态");
             // 先认领任务再读取上下文，阻止回退/发布与上下文读取之间发生竞争。
             request = context(workspace.requireApp(id), message);
-            log.info("开始应用生成 appId={}, codeGenType={}", id, app.getCodeGenType());
+            log.info(
+                    "开始应用生成 appId={}, codeGenType={}, mode={}",
+                    id,
+                    app.getCodeGenType(),
+                    mode);
             onStarted.run();
             if ("vue_project".equals(app.getCodeGenType()))
                 job.project =
-                        new ProjectTask(workspace.previewFiles(workspace.requireApp(id)), progress);
+                        new ProjectTask(
+                                workspace.previewFiles(workspace.requireApp(id)),
+                                progress,
+                                onFileChange,
+                                mode);
         } catch (RuntimeException error) {
             jobs.remove(id, job);
             fail(id, job, error);
@@ -114,7 +142,11 @@ public class AppGenerationService {
                         () ->
                                 job.project != null
                                         ? projectRunner.stream(
-                                                id, userMessageId.getAsLong(), request, job.project)
+                                                id,
+                                                userMessageId.getAsLong(),
+                                                request,
+                                                job.project,
+                                                mode)
                                         : generator.generateCodeStream(
                                                 request,
                                                 message,

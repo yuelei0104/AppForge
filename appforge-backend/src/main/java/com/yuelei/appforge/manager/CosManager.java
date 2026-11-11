@@ -2,6 +2,7 @@ package com.yuelei.appforge.manager;
 
 
 import com.qcloud.cos.COSClient;
+import com.qcloud.cos.model.ObjectMetadata;
 import com.qcloud.cos.model.PutObjectRequest;
 import com.qcloud.cos.model.PutObjectResult;
 import com.yuelei.appforge.config.CosClientConfig;
@@ -55,6 +56,30 @@ public class CosManager {
             return url;
         } else {
             log.error("文件上传COS失败，返回结果为空");
+            return null;
+        }
+    }
+
+    /**
+     * 上传附件并指定 Content-Type，便于浏览器按图片/文本正确展示。
+     *
+     * @return 访问 URL；COS 不可用时返回 null，由调用方回退本地存储
+     */
+    public String uploadFile(String key, File file, String contentType) {
+        try {
+            ObjectMetadata metadata = new ObjectMetadata();
+            if (contentType != null && !contentType.isBlank()) {
+                metadata.setContentType(contentType);
+            }
+            PutObjectRequest request =
+                    new PutObjectRequest(cosClientConfig.getBucket(), key, file);
+            request.setMetadata(metadata);
+            cosClient.putObject(request);
+            String url = String.format("%s%s", cosClientConfig.getHost(), key);
+            log.info("附件上传COS成功: {} -> {}", file.getName(), url);
+            return url;
+        } catch (Exception e) {
+            log.warn("附件上传COS失败，将回退本地存储: {}", e.getMessage());
             return null;
         }
     }

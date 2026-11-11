@@ -134,3 +134,23 @@ CREATE TABLE app_cover_cleanup (
  createTime datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
  UNIQUE KEY uk_cover_object(objectKey),KEY idx_cover_cleanup(nextRunTime,notBefore)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS app_attachment (
+  id bigint NOT NULL PRIMARY KEY COMMENT '雪花 ID',
+  appId bigint NULL COMMENT '关联应用；上传时可为空',
+  userId bigint NOT NULL COMMENT '上传用户',
+  chatHistoryId bigint NULL COMMENT '绑定的用户消息 ID；为空表示尚未发送',
+  kind varchar(16) NOT NULL COMMENT 'image/text/document',
+  originalName varchar(256) NOT NULL,
+  mimeType varchar(128) NOT NULL,
+  sizeBytes bigint NOT NULL,
+  storageKey varchar(512) NOT NULL COMMENT 'cos:key 或 local:key',
+  url varchar(1024) NOT NULL DEFAULT '',
+  extractedText longtext NULL,
+  createTime datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updateTime datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  isDelete tinyint NOT NULL DEFAULT 0,
+  KEY idx_attachment_user (userId, isDelete, createTime),
+  KEY idx_attachment_app (appId, isDelete, createTime),
+  KEY idx_attachment_message (chatHistoryId, isDelete)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

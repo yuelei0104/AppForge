@@ -661,11 +661,18 @@ class VueProjectTest {
         owner.setId(100L);
         when(users.getLoginUser(any())).thenReturn(owner);
         var service = mock(com.yuelei.appforge.service.AppService.class);
-        when(service.chatToGenCode(anyLong(), anyString(), any(), any()))
+        when(service.chatToGenCode(
+                        anyLong(),
+                        anyString(),
+                        any(),
+                        anyList(),
+                        any(),
+                        any(),
+                        any()))
                 .thenAnswer(
                         invocation -> {
                             java.util.function.Consumer<GenerationProgress> progress =
-                                    invocation.getArgument(3);
+                                    invocation.getArgument(5);
                             return reactor.core.publisher.Flux.defer(
                                     () -> {
                                         progress.accept(

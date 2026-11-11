@@ -15,6 +15,7 @@ import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.ChatHistory;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.model.enums.ChatHistoryMessageTypeEnum;
+import com.yuelei.appforge.model.vo.AttachmentVO;
 import com.yuelei.appforge.model.vo.ChatStatisticsVO;
 import com.yuelei.appforge.service.AppService;
 import com.yuelei.appforge.service.ChatHistoryService;
@@ -36,7 +37,9 @@ import java.io.IOException;
 import java.io.Writer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -231,6 +234,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                             BeanPropertyRowMapper.newInstance(ChatHistory.class),
                             params.toArray());
             if (batch.isEmpty()) break;
+            populateAttachments(batch);
             for (ChatHistory item : batch) {
                 writer.write(
                         "## "
@@ -241,7 +245,9 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                                 + item.getCreateTime()
                                 + "\n\n");
                 writer.write(Objects.toString(item.getMessage(), ""));
-                writer.write("\n\n---\n\n");
+                writer.write("\n");
+                writeAttachmentLinks(writer, item);
+                writer.write("\n---\n\n");
             }
             writer.flush();
             var last = batch.getLast();
@@ -249,6 +255,19 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
             cursorId = last.getId();
         }
         if (index == 0) writer.write("暂无对话记录。\n");
+    }
+
+    private void writeAttachmentLinks(Writer writer, ChatHistory item) throws IOException {
+        if (item.getAttachments() == null || item.getAttachments().isEmpty()) return;
+        writer.write("\n\n附件：\n");
+        for (AttachmentVO attachment : item.getAttachments()) {
+            String name =
+                    Objects.toString(attachment.name(), "附件")
+                            .replace("[", "［")
+                            .replace("]", "］")
+                            .replaceAll("[\\r\\n]", " ");
+            writer.write("- [" + name + "](" + Objects.toString(attachment.url(), "") + ")\n");
+        }
     }
 
     private Page<ChatHistory> queryHistory(
@@ -276,6 +295,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                         sql,
                         BeanPropertyRowMapper.newInstance(ChatHistory.class),
                         params.toArray());
+        populateAttachments(records);
         Page<ChatHistory> page = Page.of(1, pageSize);
         page.setRecords(records);
         page.setTotalRow(
@@ -284,6 +304,36 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                         Long.class,
                         appId));
         return page;
+    }
+
+    /** 一页消息只查一次附件表，避免前端渲染时每条消息再发请求。 */
+    private void populateAttachments(List<ChatHistory> records) {
+        if (records == null || records.isEmpty()) return;
+        List<Long> ids = records.stream().map(ChatHistory::getId).filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) return;
+        String marks = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        Map<Long, List<AttachmentVO>> grouped = new LinkedHashMap<>();
+        jdbcTemplate.query(
+                "SELECT id,chatHistoryId,kind,originalName,mimeType,sizeBytes,url"
+                        + " FROM app_attachment WHERE isDelete=0 AND chatHistoryId IN ("
+                        + marks
+                        + ") ORDER BY id ASC",
+                rs -> {
+                    long historyId = rs.getLong("chatHistoryId");
+                    grouped.computeIfAbsent(historyId, ignored -> new ArrayList<>())
+                            .add(
+                                    new AttachmentVO(
+                                            rs.getLong("id"),
+                                            rs.getString("kind"),
+                                            rs.getString("originalName"),
+                                            rs.getString("mimeType"),
+                                            rs.getLong("sizeBytes"),
+                                            rs.getString("url")));
+                },
+                ids.toArray());
+        for (ChatHistory record : records) {
+            record.setAttachments(grouped.getOrDefault(record.getId(), List.of()));
+        }
     }
 
     @Override

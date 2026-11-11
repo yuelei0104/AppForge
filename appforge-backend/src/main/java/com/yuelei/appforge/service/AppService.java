@@ -145,6 +145,45 @@ public interface AppService extends IService<App> {
         return chatToGenCode(appId, message, user);
     }
 
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(appId, message, user, progress);
+    }
+
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            List<Long> attachmentIds,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(appId, message, user, attachmentIds, null, progress, onFileChange);
+    }
+
+    /**
+     * 带选中元素上下文的生成入口；element 只进入模型 prompt，不写入聊天历史。
+     */
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            List<Long> attachmentIds,
+            String element,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(appId, message, user, attachmentIds, progress, onFileChange);
+    }
+
     /**
      * 部署应用
      *

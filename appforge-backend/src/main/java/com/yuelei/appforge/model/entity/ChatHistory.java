@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 import java.io.Serial;
 
 import com.mybatisflex.core.keygen.KeyGenerators;
+import com.yuelei.appforge.model.vo.AttachmentVO;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -77,5 +79,9 @@ public class ChatHistory implements Serializable {
      */
     @Column(value = "isDelete", isLogicDelete = true)
     private Integer isDelete;
+
+    /** 不落库：历史分页时按 chatHistoryId 批量补充。 */
+    @Column(ignore = true)
+    private List<AttachmentVO> attachments;
 
 }

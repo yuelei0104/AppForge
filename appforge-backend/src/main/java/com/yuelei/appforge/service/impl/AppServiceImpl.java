@@ -24,6 +24,7 @@ import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.model.vo.AppVO;
 import com.yuelei.appforge.model.vo.UserVO;
 import com.yuelei.appforge.service.AppService;
+import com.yuelei.appforge.service.AttachmentService;
 import com.yuelei.appforge.service.ChatHistoryService;
 import com.yuelei.appforge.service.UserService;
 import com.yuelei.appforge.workspace.*;
@@ -66,6 +67,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource private UserService userService;
 
     @Resource private ChatHistoryService chatHistoryService;
+
+    @Resource private AttachmentService attachmentService;
 
     @Resource private com.yuelei.appforge.cover.AppCoverTasks coverTasks;
     @Resource private org.springframework.transaction.support.TransactionTemplate coverTransaction;
@@ -505,6 +508,46 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             User loginUser,
             java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
                     progress) {
+        return chatToGenCode(appId, message, loginUser, progress, event -> {});
+    }
+
+    @Override
+    public Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User loginUser,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(appId, message, loginUser, List.of(), progress, onFileChange);
+    }
+
+    @Override
+    public Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User loginUser,
+            List<Long> attachmentIds,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(
+                appId, message, loginUser, attachmentIds, null, progress, onFileChange);
+    }
+
+    @Override
+    public Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User loginUser,
+            List<Long> attachmentIds,
+            String element,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.appforge.workspace.FileChangeEvent>
+                    onFileChange) {
         ThrowUtils.throwIf(
                 appId == null || appId <= 0 || StrUtil.isBlank(message) || message.length() > 2000,
                 ErrorCode.PARAMS_ERROR,
@@ -516,10 +559,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     StringBuilder response = new StringBuilder();
                     AtomicBoolean recorded = new AtomicBoolean();
                     AtomicLong userMessageId = new AtomicLong();
+                    List<Long> ownedAttachmentIds =
+                            attachmentIds == null ? List.of() : attachmentIds;
+                    List<com.yuelei.appforge.model.entity.AppAttachment> attachments =
+                            attachmentService == null
+                                    ? List.of()
+                                    : attachmentService.requireOwned(
+                                            ownedAttachmentIds, appId, loginUser);
+                    String elementBlock =
+                            element == null || element.isBlank()
+                                    ? ""
+                                    : "\n\n<element_context>\n" + element + "\n</element_context>";
+                    String prompt =
+                            message
+                                    + elementBlock
+                                    + (attachmentService == null
+                                            ? ""
+                                            : attachmentService.buildPromptBlock(attachments));
                     var source =
                             generation.generate(
                                     app,
-                                    message,
+                                    prompt,
                                     () -> {
                                         userMessageId.set(
                                                 chatHistoryService.appendChatMessage(
@@ -527,10 +587,26 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                                                         message,
                                                         ChatHistoryMessageTypeEnum.USER.getValue(),
                                                         loginUser.getId()));
+                                        try {
+                                            if (attachmentService != null
+                                                    && !ownedAttachmentIds.isEmpty()) {
+                                                attachmentService.bindToMessage(
+                                                        ownedAttachmentIds,
+                                                        userMessageId.get(),
+                                                        loginUser.getId());
+                                            }
+                                        } catch (RuntimeException bindError) {
+                                            log.warn(
+                                                    "绑定聊天附件失败 appId={} userMessageId={}",
+                                                    appId,
+                                                    userMessageId.get(),
+                                                    bindError);
+                                        }
                                         recorded.set(true);
                                     },
                                     userMessageId::get,
-                                    progress);
+                                    progress,
+                                    onFileChange);
                     return streamHandlerExecutor
                             .doExecute(
                                     source,

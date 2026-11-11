@@ -8,6 +8,7 @@ import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 import { validateMarkdownExport } from '@/utils/chatExport'
 import ChatMemoryModal from '@/components/ChatMemoryModal.vue'
 import GenerationProgress from '@/components/GenerationProgress.vue'
+import CodeWorkspace from '@/components/CodeWorkspace.vue'
 import { prependHistory, oldestCursor, updateProgress, type ChatMessage } from '@/utils/chatHistory'
 import { stopGeneration, undeployApp, applyFeatured, type AppInfo } from '@/api/workspace'
 import { generationLabel } from '@/utils/appStatus'
@@ -24,6 +25,11 @@ import {
   HomeOutlined,
   HistoryOutlined,
   DownloadOutlined,
+  PaperClipOutlined,
+  CodeOutlined,
+  EyeOutlined,
+  CloseOutlined,
+  FileTextOutlined,
   BulbOutlined,
   StopOutlined,
   InfoCircleOutlined,
@@ -75,6 +81,66 @@ const previewIframe = ref<HTMLIFrameElement | null>(null)
 const previewReady = ref(false)
 const isEditMode = ref(false)
 const selectedElementInfo = ref<ElementInfo | null>(null)
+const activePanel = ref<'preview' | 'code'>('preview')
+const liveFiles = ref<Record<string, string>>({})
+const deletedFiles = ref<Record<string, boolean>>({})
+const truncatedFiles = ref<Record<string, boolean>>({})
+
+interface PendingAttachment {
+  id: string
+  name: string
+  kind: string
+  url: string
+  size: number
+}
+const pendingFiles = ref<PendingAttachment[]>([])
+const uploading = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
+
+function pickFiles() {
+  if (!isGenerating.value && isOwner.value) fileInput.value?.click()
+}
+
+async function handleFilesSelected(event: Event) {
+  const inputEl = event.target as HTMLInputElement
+  const files = Array.from(inputEl.files || [])
+  inputEl.value = ''
+  if (!files.length || !isOwner.value) return
+  if (pendingFiles.value.length + files.length > 5) {
+    message.warning('一次最多添加 5 个附件')
+    return
+  }
+  uploading.value = true
+  try {
+    for (const file of files) {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('appId', appId.value)
+      const response = await fetch(`${API_BASE_URL}/file/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
+      })
+      const body = (await response.json()) as {
+        code: number
+        message?: string
+        data?: { id: string | number; name: string; kind: string; url: string; size: number }
+      }
+      if (!response.ok || body.code !== 0 || !body.data) {
+        throw new Error(body.message || '附件上传失败')
+      }
+      pendingFiles.value.push({ ...body.data, id: String(body.data.id) })
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '附件上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
+
+function removePending(id: string) {
+  pendingFiles.value = pendingFiles.value.filter((item) => item.id !== id)
+}
 const visualEditor = new VisualEditor({
   onElementSelected: (info) => {
     if (isOwner.value && isEditMode.value && !isGenerating.value) selectedElementInfo.value = info
@@ -461,6 +527,10 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
 
   if (success) {
     aiMessage.status = 'done'
+    // 版本文件是最终权威，清掉流式事件中的临时内容，避免截断标记残留。
+    liveFiles.value = {}
+    deletedFiles.value = {}
+    truncatedFiles.value = {}
     previewUrl.value = previewAddress(true)
     previewVisible.value = true
     previewKey.value += 1
@@ -475,10 +545,8 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
   void scrollToBottom()
 }
 
-function openEventSource(userMessage: string, aiMessage: ChatMessage) {
-  const url = `${API_BASE_URL}/app/chat/gen/code?appId=${encodeURIComponent(
-    appId.value,
-  )}&message=${encodeURIComponent(userMessage)}`
+function openEventSource(requestId: string, aiMessage: ChatMessage) {
+  const url = `${API_BASE_URL}/app/chat/gen/code?requestId=${encodeURIComponent(requestId)}`
 
   const es = new EventSource(url, { withCredentials: true })
   eventSource = es
@@ -511,10 +579,43 @@ function openEventSource(userMessage: string, aiMessage: ChatMessage) {
     void scrollToBottom()
   })
 
-  es.addEventListener('done', () => {
-    if (eventSource === es) {
-      finishStream(aiMessage, true)
+  es.addEventListener('file', (event) => {
+    if (eventSource !== es || !streaming.value) return
+    try {
+      const change = JSON.parse((event as MessageEvent).data) as {
+        path?: string
+        operation?: string
+        content?: string | null
+        truncated?: boolean
+      }
+      if (!change.path) return
+      if (change.operation === 'DELETE') {
+        delete liveFiles.value[change.path]
+        delete truncatedFiles.value[change.path]
+        deletedFiles.value[change.path] = true
+      } else if (change.operation === 'CREATE' || change.operation === 'UPDATE') {
+        delete deletedFiles.value[change.path]
+        if (typeof change.content === 'string') liveFiles.value[change.path] = change.content
+        if (change.truncated || typeof change.content !== 'string') {
+          truncatedFiles.value[change.path] = true
+        } else {
+          delete truncatedFiles.value[change.path]
+        }
+      }
+    } catch {
+      /* 文件事件不完整时等待版本文件兜底。 */
     }
+  })
+
+  es.addEventListener('done', (event) => {
+    if (eventSource !== es) return
+    try {
+      const payload = JSON.parse((event as MessageEvent).data) as { version?: number }
+      if (payload.version != null && app.value) app.value.currentVersion = payload.version
+    } catch {
+      /* 版本号缺失时刷新应用信息兜底。 */
+    }
+    finishStream(aiMessage, true)
   })
 
   es.addEventListener('generation-error', (event) => {
@@ -556,12 +657,12 @@ function openEventSource(userMessage: string, aiMessage: ChatMessage) {
   }
 }
 
-function sendMessage(rawMessage: string) {
+async function sendMessage(rawMessage: string) {
   if (!isOwner.value) {
     message.warning(readOnlyHint.value || '应用信息尚未加载')
     return
   }
-  let content = rawMessage.trim()
+  const content = rawMessage.trim()
   if (!content) {
     message.warning('请输入消息内容')
     return
@@ -574,14 +675,15 @@ function sendMessage(rawMessage: string) {
     return
   }
 
+  let elementContext = ''
   if (selectedElementInfo.value) {
     const element = selectedElementInfo.value
-    content += '\n\n选中元素信息：'
-    if (element.pagePath) content += `\n- 页面路径: ${element.pagePath}`
-    content += `\n- 标签: ${element.tagName.toLowerCase()}\n- 选择器: ${element.selector}`
-    if (element.textContent) content += `\n- 当前内容: ${element.textContent.substring(0, 100)}`
+    elementContext = '选中元素信息：'
+    if (element.pagePath) elementContext += `\n- 页面路径: ${element.pagePath}`
+    elementContext += `\n- 标签: ${element.tagName.toLowerCase()}\n- 选择器: ${element.selector}`
+    if (element.textContent) elementContext += `\n- 当前内容: ${element.textContent.substring(0, 100)}`
   }
-  if (content.length > 2000) {
+  if (content.length + elementContext.length > 2000) {
     message.warning('消息与选中元素信息合计最多 2000 字，请缩短修改要求或重新选择更具体的元素')
     return
   }
@@ -589,12 +691,18 @@ function sendMessage(rawMessage: string) {
   visualEditor.disableEditMode()
   isEditMode.value = false
 
+  const attachments = pendingFiles.value.map((item) => ({
+    name: item.name,
+    kind: item.kind,
+    url: item.url,
+  }))
   const userMessage: ChatMessage = {
     id: nextMessageId(),
     role: 'user',
     content,
     time: formatTime(),
     status: 'done',
+    attachments,
   }
   const aiMessage = reactive<ChatMessage>({
     id: nextMessageId(),
@@ -615,9 +723,39 @@ function sendMessage(rawMessage: string) {
   followLatest = true
   void scrollToBottom(true)
 
-  openEventSource(content, aiMessage)
+  try {
+    const response = await fetch(`${API_BASE_URL}/app/chat/request`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appId: appId.value,
+        message: content,
+        attachmentIds: pendingFiles.value.map((item) => item.id),
+        element: elementContext,
+      }),
+    })
+    const body = (await response.json()) as {
+      code: number
+      message?: string
+      data?: { requestId?: string }
+    }
+    if (!response.ok || body.code !== 0 || !body.data?.requestId) {
+      throw new Error(body.message || '创建对话请求失败')
+    }
+    pendingFiles.value = []
+    openEventSource(body.data.requestId, aiMessage)
+  } catch (error) {
+    streaming.value = false
+    previewLoading.value = false
+    aiMessage.status = 'error'
+    const errorText = error instanceof Error ? error.message : '创建对话请求失败'
+    aiMessage.content = errorText
+    if (app.value) app.value.generationStatus = 'FAILED'
+    message.error(errorText)
+    void refreshApp()
+  }
 }
-
 function handleSend() {
   sendMessage(input.value)
 }
@@ -669,6 +807,12 @@ async function loadApp() {
   app.value = null
   messages.value = []
   input.value = ''
+  pendingFiles.value = []
+  activePanel.value = 'preview'
+  liveFiles.value = {}
+  deletedFiles.value = {}
+  truncatedFiles.value = {}
+  uploading.value = false
   if (!appId.value) {
     message.error('应用不存在')
     await router.replace('/')
@@ -1027,6 +1171,20 @@ onBeforeUnmount(() => {
                     />
                   </template>
                   <template v-else>{{ item.content }}</template>
+                  <div v-if="item.attachments?.length" class="chat-message__attachments">
+                    <a
+                      v-for="file in item.attachments"
+                      :key="file.url"
+                      class="chat-message__attachment"
+                      :href="file.url"
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      <img v-if="file.kind === 'image'" :src="file.url" :alt="file.name" />
+                      <FileTextOutlined v-else />
+                      <span>{{ file.name }}</span>
+                    </a>
+                  </div>
                   <span v-if="item.status === 'streaming'" class="chat-message__cursor" />
                 </div>
               </div>
@@ -1075,6 +1233,17 @@ onBeforeUnmount(() => {
         </a-alert>
 
         <div class="chat-panel__composer">
+          <div v-if="pendingFiles.length || uploading" class="chat-panel__attachments">
+            <div v-for="file in pendingFiles" :key="file.id" class="chat-panel__attachment">
+              <img v-if="file.kind === 'image'" :src="file.url" :alt="file.name" />
+              <FileTextOutlined v-else />
+              <span class="chat-panel__attachment-name">{{ file.name }}</span>
+              <button type="button" class="chat-panel__attachment-remove" @click="removePending(file.id)">
+                <CloseOutlined />
+              </button>
+            </div>
+            <span v-if="uploading" class="chat-panel__attachment-uploading">上传中...</span>
+          </div>
           <a-tooltip :title="readOnlyHint">
             <div>
               <a-textarea
@@ -1101,6 +1270,24 @@ onBeforeUnmount(() => {
             </div>
           </a-tooltip>
           <div class="chat-panel__composer-footer">
+            <a-tooltip v-if="isOwner" title="添加图片或文档（最多 5 个）">
+              <a-button
+                size="small"
+                :loading="uploading"
+                :disabled="isGenerating || appLoading || !historyLoaded || historyLoading"
+                @click="pickFiles"
+              >
+                <template #icon><PaperClipOutlined /></template>
+              </a-button>
+            </a-tooltip>
+            <input
+              ref="fileInput"
+              class="chat-panel__file-input"
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.json,.csv,.xml,.yml,.yaml"
+              @change="handleFilesSelected"
+            />
             <span class="chat-panel__composer-hint">{{
               readOnlyHint || 'Ctrl / ⌘ + Enter 发送'
             }}</span>
@@ -1146,7 +1333,25 @@ onBeforeUnmount(() => {
             <LinkOutlined />
             生成效果
           </span>
-          <div class="preview-panel__actions">
+          <div class="preview-panel__tabs">
+            <button
+              type="button"
+              class="preview-panel__tab"
+              :class="{ 'preview-panel__tab--active': activePanel === 'preview' }"
+              @click="activePanel = 'preview'"
+            >
+              <EyeOutlined />预览
+            </button>
+            <button
+              type="button"
+              class="preview-panel__tab"
+              :class="{ 'preview-panel__tab--active': activePanel === 'code' }"
+              @click="activePanel = 'code'"
+            >
+              <CodeOutlined />代码
+            </button>
+          </div>
+          <div v-if="activePanel === 'preview'" class="preview-panel__actions">
             <a-button
               v-if="isOwner && previewVisible"
               size="small"
@@ -1160,25 +1365,36 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="preview-panel__body">
-          <iframe
-            v-if="previewVisible"
-            :key="previewKey"
-            ref="previewIframe"
-            class="preview-panel__iframe"
-            :src="previewUrl"
-            @load="onPreviewLoad"
-            title="应用预览"
-            sandbox="allow-forms allow-modals allow-scripts allow-same-origin"
-          />
-          <div v-else class="preview-panel__empty">
-            <div class="preview-panel__empty-icon">⌘</div>
-            <p>完成对话后，生成的网站会展示在这里</p>
-          </div>
+          <template v-if="activePanel === 'preview'">
+            <iframe
+              v-if="previewVisible"
+              :key="previewKey"
+              ref="previewIframe"
+              class="preview-panel__iframe"
+              :src="previewUrl"
+              @load="onPreviewLoad"
+              title="应用预览"
+              sandbox="allow-forms allow-modals allow-scripts allow-same-origin"
+            />
+            <div v-else class="preview-panel__empty">
+              <div class="preview-panel__empty-icon">⌘</div>
+              <p>完成对话后，生成的网站会展示在这里</p>
+            </div>
 
-          <div v-if="streaming && previewLoading" class="preview-panel__mask">
-            <a-spin />
-            <span>正在生成页面...</span>
-          </div>
+            <div v-if="streaming && previewLoading" class="preview-panel__mask">
+              <a-spin />
+              <span>正在生成页面...</span>
+            </div>
+          </template>
+          <CodeWorkspace
+            v-else
+            :app-id="appId"
+            :version="app?.currentVersion"
+            :live-files="liveFiles"
+            :deleted-files="deletedFiles"
+            :truncated-files="truncatedFiles"
+            :generating="isGenerating"
+          />
         </div>
       </section>
     </div>
@@ -1483,12 +1699,14 @@ onBeforeUnmount(() => {
 
 .chat-panel__composer-footer {
   display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
   margin-top: 8px;
 }
 
 .chat-panel__composer-hint {
+  margin-right: auto;
   font-size: 11px;
   color: #aab4c5;
 }
@@ -1501,6 +1719,8 @@ onBeforeUnmount(() => {
 .preview-panel__header {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
@@ -1514,6 +1734,124 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 600;
   color: #344054;
+}
+
+.chat-message__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.chat-message__attachment {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  max-width: 190px;
+  padding: 3px 6px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.4;
+  color: inherit;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+}
+.chat-message--ai .chat-message__attachment {
+  background: #eef2f8;
+}
+.chat-message__attachment img {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex: none;
+}
+.chat-message__attachment span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-panel__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.chat-panel__attachment {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 220px;
+  padding: 4px 6px 4px 8px;
+  font-size: 12px;
+  color: #475467;
+  background: #f5f8fb;
+  border: 1px solid #e8edf5;
+  border-radius: 8px;
+}
+.chat-panel__attachment img {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+.chat-panel__attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-panel__attachment-remove {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  color: #98a2b3;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  flex: none;
+}
+.chat-panel__attachment-remove:hover {
+  color: #f04438;
+  background: #fee4e2;
+}
+.chat-panel__attachment-uploading {
+  align-self: center;
+  font-size: 11px;
+  color: #98a2b3;
+}
+.chat-panel__file-input {
+  display: none;
+}
+
+.preview-panel__tabs {
+  display: flex;
+  gap: 2px;
+  margin-right: auto;
+  padding: 2px;
+  background: #f2f5fa;
+  border-radius: 8px;
+}
+.preview-panel__tab {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #667085;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.preview-panel__tab--active {
+  color: #344054;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.12);
 }
 
 .preview-panel__body {
@@ -1581,5 +1919,8 @@ onBeforeUnmount(() => {
   .preview-panel {
     min-height: 420px;
   }
+}
+.preview-panel__body :deep(.code-workspace) {
+  height: 100%;
 }
 </style>

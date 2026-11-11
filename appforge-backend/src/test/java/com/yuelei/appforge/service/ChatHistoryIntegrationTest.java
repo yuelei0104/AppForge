@@ -44,6 +44,10 @@ class ChatHistoryIntegrationTest {
                 "CREATE TABLE chat_history(id bigint primary key,appId bigint,userId bigint,message"
                     + " text,messageType varchar(16),createTime timestamp,updateTime"
                     + " timestamp,isDelete int default 0)");
+        jdbc.execute(
+                "CREATE TABLE app_attachment(id bigint primary key,chatHistoryId bigint,kind"
+                    + " varchar(16),originalName varchar(255),mimeType varchar(128),sizeBytes"
+                    + " bigint,url varchar(1024),isDelete int default 0)");
         owner = user(100, "user");
         admin = user(200, "admin");
         other = user(300, "user");
