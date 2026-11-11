@@ -13,7 +13,7 @@ import java.time.Duration;
 public class StreamingHttpClientConfig {
     public static HttpClientBuilder builder() {
         return JdkHttpClient.builder()
-                .connectTimeout(Duration.ofSeconds(15))
+                .connectTimeout(Duration.ofSeconds(30))
                 .readTimeout(Duration.ofMinutes(2));
     }
 

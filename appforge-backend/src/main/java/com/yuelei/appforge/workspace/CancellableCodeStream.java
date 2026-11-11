@@ -14,11 +14,13 @@ import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.*;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** LangChain4j 1.1 的 Flux 适配器没有取消传输接口，用可关闭的 HTTP SSE 流实现中断。 */
@@ -39,8 +41,10 @@ public class CancellableCodeStream {
     @Value("${langchain4j.open-ai.streaming-chat-model.reasoning-effort:none}")
     private String reasoningEffort;
 
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
+
     private final HttpClient client =
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+            HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
 
     public Flux<String> stream(String message, CodeGenTypeEnum type) {
         String resource =
@@ -177,9 +181,7 @@ public class CancellableCodeStream {
                     return Flux.<String>create(
                             sink -> {
                                 AtomicReference<InputStream> input = new AtomicReference<>();
-                                var future =
-                                        client.sendAsync(
-                                                request, HttpResponse.BodyHandlers.ofInputStream());
+                                var future = sendWithConnectRetry(request);
                                 sink.onCancel(
                                         () -> {
                                             future.cancel(true);
@@ -330,6 +332,28 @@ public class CancellableCodeStream {
                                         });
                             });
                 });
+    }
+
+    /** 建连超时通常是一次网络抖动；请求尚未发出，重试一次不会重复生成。 */
+    private CompletableFuture<HttpResponse<InputStream>> sendWithConnectRetry(HttpRequest request) {
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
+                .exceptionallyCompose(
+                        error ->
+                                isConnectFailure(error)
+                                        ? client.sendAsync(
+                                                request,
+                                                HttpResponse.BodyHandlers.ofInputStream())
+                                        : CompletableFuture.failedFuture(error));
+    }
+
+    private static boolean isConnectFailure(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof HttpConnectTimeoutException
+                    || current instanceof ConnectException) return true;
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static void close(InputStream input) {

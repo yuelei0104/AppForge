@@ -19,7 +19,10 @@ import org.springframework.stereotype.Service;
 
 import reactor.core.publisher.*;
 import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
 
+import java.net.ConnectException;
+import java.net.http.HttpConnectTimeoutException;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -155,6 +158,9 @@ public class AppGenerationService {
                                                 id,
                                                 userMessageId.getAsLong()))
                 .timeout(Duration.ofSeconds(job.project == null ? 120 : 300))
+                .retryWhen(
+                        Retry.fixedDelay(1, Duration.ofSeconds(2))
+                                .filter(AppGenerationService::isConnectFailure))
                 .doOnNext(
                         chunk -> {
                             ThrowUtils.throwIf(
@@ -189,6 +195,16 @@ public class AppGenerationService {
                         : job.project.result(),
                 message);
         return Mono.empty();
+    }
+
+    private static boolean isConnectFailure(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof HttpConnectTimeoutException
+                    || current instanceof ConnectException) return true;
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void fail(long id, Job job, Throwable error) {

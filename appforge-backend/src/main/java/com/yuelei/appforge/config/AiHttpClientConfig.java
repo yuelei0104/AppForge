@@ -27,7 +27,8 @@ public class AiHttpClientConfig {
             @Value("${langchain4j.open-ai.chat-model.api-key}") String apiKey,
             @Value("${langchain4j.open-ai.chat-model.model-name}") String modelName) {
         return OpenAiChatModel.builder()
-                .httpClientBuilder(JdkHttpClient.builder())
+                .httpClientBuilder(
+                        JdkHttpClient.builder().connectTimeout(Duration.ofSeconds(30)))
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
                 .modelName(modelName)
