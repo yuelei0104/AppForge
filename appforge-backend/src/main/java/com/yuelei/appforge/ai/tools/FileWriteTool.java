@@ -1,57 +1,15 @@
 package com.yuelei.appforge.ai.tools;
-
-import com.yuelei.appforge.constant.AppConstant;
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.agent.tool.ToolMemoryId;
-import lombok.extern.slf4j.Slf4j;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-
-/**
- * 文件写入工具
- * 支持 AI 通过工具调用的方式写入文件
- */
-@Slf4j
-public class FileWriteTool {
-
-    @Tool("写入文件到指定路径")
-    public String writeFile(
-        @P("文件的相对路径")
-        String relativeFilePath,
-        @P("要写入文件的内容")
-        String content,
-        @ToolMemoryId Long appId
-    ) {
-        try {
-            Path path = Paths.get(relativeFilePath);
-            if (!path.isAbsolute()) {
-                // 相对路径处理，创建基于 appId 的项目目录
-                String projectDirName = "vue_project_" + appId;
-                Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
-                path = projectRoot.resolve(relativeFilePath);
-            }
-            // 创建父目录（如果不存在）
-            Path parentDir = path.getParent();
-            if (parentDir != null) {
-                Files.createDirectories(parentDir);
-            }
-            // 写入文件内容
-            Files.write(path, content.getBytes(),
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING);
-            log.info("成功写入文件: {}", path.toAbsolutePath());
-            // 注意要返回相对路径，不能让 AI 把文件绝对路径返回给用户
-            return "文件写入成功: " + relativeFilePath;
-        } catch (IOException e) {
-            String errorMessage = "文件写入失败: " + relativeFilePath + ", 错误: " + e.getMessage();
-            log.error(errorMessage, e);
-            return errorMessage;
-        }
-    }
+import cn.hutool.json.JSONObject;
+import com.yuelei.appforge.workspace.vue.ProjectTask;
+import dev.langchain4j.agent.tool.*;
+import org.springframework.stereotype.Component;
+@Component
+public class FileWriteTool extends BaseTool {
+    public FileWriteTool(){this(null);}private FileWriteTool(ProjectTask task){super(task);}
+    @Override public String getToolName(){return "writeFile";}
+    @Override public String getDisplayName(){return "写入文件";}
+    @Override public BaseTool bind(ProjectTask task){return new FileWriteTool(task);}
+    @Tool("文件写入工具：创建文件或完整重写文件。已有文件必须先读取目录和文件；平台配置采用目录工具给出的固定范本")
+    public String writeFile(@P("相对项目根目录的文件路径") String path,@P("完整 UTF-8 文件内容") String content){return action("write_file",path,()->task.write(path,content));}
+    @Override public String generateToolExecutedResult(JSONObject args){return heading(args)+code(args.getStr("content"),path(args));}
 }
-

@@ -31,8 +31,10 @@ public class StaticResourceController {
             @PathVariable long appId, @PathVariable String fileName, HttpServletRequest request) {
         try {
             App app = workspace.requireApp(appId);
-            if (!AppPolicy.canRead(app, viewer(request))) return ResponseEntity.notFound().build();
-            return file(workspace.previewFiles(app), fileName, !AppPolicy.isPublic(app));
+            User user = viewer(request);
+            if (!AppPolicy.canRead(app, user)) return ResponseEntity.notFound().build();
+            boolean editor = "1".equals(request.getParameter("visualEditor")) && AppPolicy.isOwner(app, user);
+            return file(workspace.previewFiles(app), fileName, !AppPolicy.isPublic(app), editor);
         } catch (BusinessException e) {
             return ResponseEntity.notFound().build();
         }
@@ -83,6 +85,11 @@ public class StaticResourceController {
 
     private ResponseEntity<Resource> file(
             java.util.Map<String, String> files, String name, boolean privatePage) {
+        return file(files, name, privatePage, false);
+    }
+
+    private ResponseEntity<Resource> file(
+            java.util.Map<String, String> files, String name, boolean privatePage, boolean editor) {
         boolean project = VueProjectFiles.isProject(files);
         if (project) {
             if (!VueProjectFiles.runtimePath("dist/" + name))
@@ -101,6 +108,7 @@ public class StaticResourceController {
             content = AppPageRenderer.prepareNativeAssets(files, false);
         if ((!project && !AppFileStore.FILES.contains(name)) || content == null)
             return ResponseEntity.notFound().build();
+        if (editor && "index.html".equals(name)) content = AppPageRenderer.withVisualEditorBridge(content);
         return ResponseEntity.ok()
                 .contentType(
                         new MediaType(

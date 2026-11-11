@@ -88,10 +88,15 @@ public class AiCodeGeneratorServiceFactory {
 
     /** 文件工具持有调用级工作目录，因此工程服务按次构建，不能缓存到其他调用。 */
     public VueProjectAiService vueProjectService(Object tools, StreamingChatModel model) {
+        return vueProjectService(new Object[] {tools}, model);
+    }
+
+    public VueProjectAiService vueProjectService(Object[] tools, StreamingChatModel model) {
         return AiServices.builder(VueProjectAiService.class)
                 .streamingChatModel(model)
                 .chatMemory(MessageWindowChatMemory.withMaxMessages(80))
                 .tools(tools)
+                .hallucinatedToolNameStrategy(request -> dev.langchain4j.data.message.ToolExecutionResultMessage.from(request, "Error: there is no tool called " + request.name()))
                 .maxSequentialToolsInvocations(60)
                 .build();
     }

@@ -12,6 +12,31 @@ import java.util.*;
 public final class AppPageRenderer {
     private AppPageRenderer() {}
 
+    /** Runtime-only parent bridge; never written into generated sources or deployment files. */
+    public static String withVisualEditorBridge(String html) {
+        var document = Jsoup.parse(html);
+        document.outputSettings().prettyPrint(false);
+        document.head().appendElement("script").attr("id", "appforge-visual-editor-bridge")
+                .appendChild(new org.jsoup.nodes.DataNode("""
+                (() => {
+                  window.addEventListener('message', event => {
+                    if (event.source !== window.parent || !event.data || typeof event.data !== 'object') return;
+                    const message = event.data;
+                    if (message.type !== 'INSTALL_VISUAL_EDITOR' || typeof message.script !== 'string' || message.script.length > 100000) return;
+                    if (document.getElementById('visual-edit-script')) {
+                      window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { type: 'TOGGLE_EDIT_MODE', editMode: message.editMode === true } }));
+                      return;
+                    }
+                    const script = document.createElement('script');
+                    script.id = 'visual-edit-script';
+                    script.textContent = message.script;
+                    document.head.appendChild(script);
+                  });
+                })();
+                """));
+        return document.outerHtml();
+    }
+
     /** 将原生三文件模式的本地引用统一为真实保存的文件名，兼容已有版本的预览。 */
     public static String prepareNativeAssets(
             Map<String, String> files, boolean requireReferencedFiles) {

@@ -10,11 +10,15 @@ import reactor.core.publisher.Flux;
 
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 
 /** JSON 块已由适配器封装完整；工具参数分片不在这里解析。历史仍由应用服务统一落库。 */
 @Slf4j
 public final class JsonMessageStreamHandler {
+    private final com.yuelei.appforge.ai.tools.ToolManager tools;
+    public JsonMessageStreamHandler() { this(com.yuelei.appforge.ai.tools.ToolManager.defaults()); }
+    public JsonMessageStreamHandler(com.yuelei.appforge.ai.tools.ToolManager tools) { this.tools = tools; }
+    private String label(String name) { var tool = tools.getTool(name); return tool == null ? "未知工具" : tool.getDisplayName(); }
+
     public Flux<String> handle(Flux<String> source, Consumer<String> history) {
         return Flux.defer(
                 () -> {
@@ -37,11 +41,8 @@ public final class JsonMessageStreamHandler {
                                                             request.getName()
                                                                     + ":"
                                                                     + request.getIndex());
-                                            return selected.add(id)
-                                                    ? "\n\n[选择工具] "
-                                                            + label(request.getName())
-                                                            + "\n\n"
-                                                    : "";
+                                            var tool = tools.getTool(request.getName());
+                                            return selected.add(id) ? tool == null ? "\n\n[选择工具] 未知工具\n\n" : tool.generateToolRequestResponse() : "";
                                         }
                                         String output;
                                         if (type == StreamMessageTypeEnum.AI_RESPONSE)
@@ -55,58 +56,14 @@ public final class JsonMessageStreamHandler {
                                                                     + ":"
                                                                     + result.getArguments());
                                             if (!executed.add(id)) return "";
-                                            String path = "";
-                                            try {
-                                                var args =
-                                                        JSONUtil.parseObj(
-                                                                Objects.toString(
-                                                                        result.getArguments(),
-                                                                        "{}"));
-                                                path =
-                                                        args.getStr(
-                                                                "path",
-                                                                args.getStr(
-                                                                        "relativeFilePath", ""));
-                                            } catch (RuntimeException ignored) {
-                                                /* 失败工具仍可展示结果，无需解析不完整参数。 */
-                                            }
-                                            path = Objects.toString(path, "");
-                                            try {
-                                                if (!path.isBlank())
-                                                    com.yuelei.appforge.workspace.vue
-                                                            .VueProjectFiles.sourcePath(path);
-                                            } catch (RuntimeException invalid) {
-                                                path = "";
-                                            }
-                                            output =
-                                                    "\n\n["
-                                                            + (result.isFailed() ? "工具失败" : "工具调用")
-                                                            + "] "
-                                                            + label(result.getName())
-                                                            + (path.isBlank() ? "" : " " + path)
-                                                            + "\n";
-                                            if (!result.isFailed() && result.getContent() != null) {
-                                                String fence = "```";
-                                                var runs =
-                                                        Pattern.compile("`{3,}")
-                                                                .matcher(result.getContent());
-                                                while (runs.find())
-                                                    if (runs.group().length() >= fence.length())
-                                                        fence =
-                                                                "`"
-                                                                        .repeat(
-                                                                                runs.group()
-                                                                                                .length()
-                                                                                        + 1);
-                                                output +=
-                                                        "\n"
-                                                                + fence
-                                                                + language(path)
-                                                                + "\n"
-                                                                + result.getContent()
-                                                                + "\n"
-                                                                + fence
-                                                                + "\n";
+                                            cn.hutool.json.JSONObject args;
+                                            try { args = JSONUtil.parseObj(Objects.toString(result.getArguments(), "{}")); }
+                                            catch (RuntimeException ignored) { args = new cn.hutool.json.JSONObject(); }
+                                            var tool = tools.getTool(result.getName());
+                                            if (tool == null) output = "\n\n[工具失败] 未知工具\n\n";
+                                            else {
+                                                args.set("content", result.getContent());
+                                                output = "\n\n" + (result.isFailed() ? tool.generateFailureResponse(args) : tool.generateToolExecutedResult(args)) + "\n\n";
                                             }
                                         }
                                         if (!output.isEmpty()) history.accept(output);
@@ -116,25 +73,4 @@ public final class JsonMessageStreamHandler {
                 });
     }
 
-    private static String label(String name) {
-        return switch (Objects.toString(name, "")) {
-            case "readDirectory" -> "读取目录";
-            case "readFile" -> "读取文件";
-            case "writeFile" -> "写入文件";
-            case "modifyFile" -> "修改文件";
-            case "deleteFile" -> "删除文件";
-            default -> "未知工具";
-        };
-    }
-
-    private static String language(String path) {
-        int dot = path.lastIndexOf('.');
-        String suffix = dot < 0 ? "text" : path.substring(dot + 1).toLowerCase(Locale.ROOT);
-        return switch (suffix) {
-            case "js", "mjs" -> "javascript";
-            case "md" -> "markdown";
-            case "svg" -> "xml";
-            default -> suffix;
-        };
-    }
 }

@@ -19,6 +19,7 @@ public class VueProjectRunner {
     @Resource(name = "reasoningStreamingChatModel")
     private StreamingChatModel streamingChatModel;
     @Resource private VueProjectBuilder builder;
+    @Resource private com.yuelei.appforge.ai.tools.ToolManager toolManager;
 
     public Flux<String> stream(
             long appId, long currentMessageId, String request, ProjectTask task) {
@@ -27,7 +28,7 @@ public class VueProjectRunner {
                     String prompt = facade.contextForProject(request, appId, currentMessageId);
                     var service =
                             factory.vueProjectService(
-                                    new VueProjectTools(task),
+                                    (toolManager == null ? com.yuelei.appforge.ai.tools.ToolManager.defaults() : toolManager).getAllTools(task),
                                     new BudgetedStreamingModel(streamingChatModel, task));
                     return com.yuelei.appforge.core.adapter.TokenStreamFluxAdapter.adapt(
                                     service.generate(prompt), task)
