@@ -11,7 +11,16 @@ import java.util.function.Consumer;
 @Component
 public class StreamHandlerExecutor {
     private final SimpleTextStreamHandler text = new SimpleTextStreamHandler();
-    private final JsonMessageStreamHandler json = new JsonMessageStreamHandler();
+    private final JsonMessageStreamHandler json;
+
+    public StreamHandlerExecutor() {
+        this(com.yuelei.appforge.ai.tools.ToolManager.defaults());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public StreamHandlerExecutor(com.yuelei.appforge.ai.tools.ToolManager tools) {
+        json = new JsonMessageStreamHandler(tools);
+    }
 
     public Flux<String> doExecute(
             Flux<String> source, CodeGenTypeEnum type, Consumer<String> history) {

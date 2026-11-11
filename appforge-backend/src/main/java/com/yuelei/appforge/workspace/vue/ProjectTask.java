@@ -147,6 +147,28 @@ public final class ProjectTask implements AutoCloseable {
     public synchronized String delete(String name) {
         editing(name);
         ThrowUtils.throwIf(!files.containsKey(name), ErrorCode.PARAMS_ERROR, "文件不存在");
+        String fileName = Path.of(name).getFileName().toString().toLowerCase(Locale.ROOT);
+        ThrowUtils.throwIf(
+                Set.of(
+                                "package.json",
+                                "package-lock.json",
+                                "yarn.lock",
+                                "pnpm-lock.yaml",
+                                "vite.config.js",
+                                "vite.config.ts",
+                                "vue.config.js",
+                                "tsconfig.json",
+                                "tsconfig.app.json",
+                                "tsconfig.node.json",
+                                "index.html",
+                                "main.js",
+                                "main.ts",
+                                "app.vue",
+                                ".gitignore",
+                                "readme.md")
+                        .contains(fileName),
+                ErrorCode.PARAMS_ERROR,
+                "不允许删除重要文件");
         try {
             Files.delete(root.resolve(name));
             files.remove(name);

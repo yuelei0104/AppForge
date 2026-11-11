@@ -145,7 +145,7 @@ class AppWorkspaceTest {
                 0,
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM app_cover_task WHERE status IN"
-                            + " ('PENDING','RUNNING','RETRY_WAIT')",
+                                + " ('PENDING','RUNNING','RETRY_WAIT')",
                         Integer.class));
         assertFalse(tasks.publish(attempt));
     }
@@ -197,6 +197,84 @@ class AppWorkspaceTest {
         assertEquals(1, workspace.ensureBaseline(id));
         assertEquals("IMPORT", workspace.versions(id, owner).get(0).kind());
         assertEquals("<h1>legacy</h1>", workspace.files(id, 1).get("index.html"));
+    }
+
+    @Test
+    void visualEditorBridgeIsOwnerPreviewOnlyAndNeverSavedOrDeployed() throws Exception {
+        snapshot("visual", "<h1 id=hero>原始标题</h1><p>保留内容</p>");
+        StaticResourceController controller = new StaticResourceController();
+        ReflectionTestUtils.setField(controller, "workspace", workspace);
+        AtomicReference<User> actor = new AtomicReference<>(owner);
+        UserService users =
+                (UserService)
+                        Proxy.newProxyInstance(
+                                UserService.class.getClassLoader(),
+                                new Class[] {UserService.class},
+                                (proxy, method, args) -> {
+                                    if (method.getName().equals("getLoginUser")) return actor.get();
+                                    return null;
+                                });
+        ReflectionTestUtils.setField(controller, "userService", users);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setParameter("visualEditor", "1");
+        var response = controller.getPreviewIndex(id, request);
+        String html =
+                new String(
+                        response.getBody().getInputStream().readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(html.contains("appforge-visual-editor-bridge"));
+        assertEquals(
+                "sandbox allow-scripts allow-forms",
+                response.getHeaders().getFirst("Content-Security-Policy"));
+        assertTrue(
+                workspace.files(id, 1).values().stream()
+                        .noneMatch(text -> text.contains("appforge-visual-editor-bridge")));
+        String key = workspace.deploy(id, owner);
+        String deployed =
+                new String(
+                        controller
+                                .getDeployIndex(key, request)
+                                .getBody()
+                                .getInputStream()
+                                .readAllBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8);
+        assertFalse(deployed.contains("appforge-visual-editor-bridge"));
+        jdbc.update("UPDATE app SET visibility='PUBLIC' WHERE id=?", id);
+        actor.set(other);
+        assertFalse(
+                new String(
+                                controller
+                                        .getPreviewIndex(id, request)
+                                        .getBody()
+                                        .getInputStream()
+                                        .readAllBytes(),
+                                java.nio.charset.StandardCharsets.UTF_8)
+                        .contains("appforge-visual-editor-bridge"));
+        actor.set(null);
+        assertFalse(
+                new String(
+                                controller
+                                        .getPreviewIndex(id, request)
+                                        .getBody()
+                                        .getInputStream()
+                                        .readAllBytes(),
+                                java.nio.charset.StandardCharsets.UTF_8)
+                        .contains("appforge-visual-editor-bridge"));
+        actor.set(owner);
+        request.removeParameter("visualEditor");
+        assertFalse(
+                new String(
+                                controller
+                                        .getPreviewIndex(id, request)
+                                        .getBody()
+                                        .getInputStream()
+                                        .readAllBytes(),
+                                java.nio.charset.StandardCharsets.UTF_8)
+                        .contains("appforge-visual-editor-bridge"));
+        java.nio.file.Path evidence = java.nio.file.Path.of("target/visual-edit-fixture");
+        java.nio.file.Files.createDirectories(evidence);
+        java.nio.file.Files.writeString(evidence.resolve("owner-preview.html"), html);
+        java.nio.file.Files.writeString(evidence.resolve("deployment.html"), deployed);
     }
 
     @Test

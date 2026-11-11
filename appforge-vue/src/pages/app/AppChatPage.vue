@@ -4,6 +4,7 @@ import {
   getChatStatistics,
   exportChatMarkdown,
 } from '@/api/chatHistoryController'
+import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 import { validateMarkdownExport } from '@/utils/chatExport'
 import ChatMemoryModal from '@/components/ChatMemoryModal.vue'
 import GenerationProgress from '@/components/GenerationProgress.vue'
@@ -70,6 +71,51 @@ const previewVisible = ref(false)
 const previewLoading = ref(false)
 const previewUrl = ref('')
 const previewKey = ref(0)
+const previewIframe = ref<HTMLIFrameElement | null>(null)
+const previewReady = ref(false)
+const isEditMode = ref(false)
+const selectedElementInfo = ref<ElementInfo | null>(null)
+const visualEditor = new VisualEditor({
+  onElementSelected: (info) => {
+    if (isOwner.value && isEditMode.value && !isGenerating.value) selectedElementInfo.value = info
+  },
+})
+function onPreviewLoad() {
+  if (!previewIframe.value) return
+  visualEditor.init(previewIframe.value)
+  previewReady.value = true
+  visualEditor.onIframeLoad()
+}
+function clearSelectedElement() {
+  selectedElementInfo.value = null
+  visualEditor.clearSelection()
+}
+function resetVisualEditor() {
+  visualEditor.destroy()
+  isEditMode.value = false
+  selectedElementInfo.value = null
+  previewReady.value = false
+}
+function toggleEditMode() {
+  if (!isOwner.value || isGenerating.value || deployLoading.value || deleting.value) return
+  if (!previewReady.value) {
+    message.warning('请等待页面加载完成')
+    return
+  }
+  isEditMode.value = visualEditor.toggleEditMode()
+  if (!isEditMode.value) selectedElementInfo.value = null
+}
+function handleIframeMessage(event: MessageEvent) {
+  visualEditor.handleIframeMessage(event)
+}
+window.addEventListener('message', handleIframeMessage)
+function previewAddress(cacheBust = false) {
+  const url = new URL(getAppPreviewUrl(appId.value), window.location.origin)
+  if (isOwner.value) url.searchParams.set('visualEditor', '1')
+  if (cacheBust) url.searchParams.set('t', String(Date.now()))
+  return url.href
+}
+watch(previewKey, resetVisualEditor, { flush: 'sync' })
 
 const deployLoading = ref(false)
 const deployModalOpen = ref(false)
@@ -213,7 +259,7 @@ async function refreshApp() {
         app.value.currentVersion &&
         previousVersion !== app.value.currentVersion
       ) {
-        previewUrl.value = `${getAppPreviewUrl(appId.value)}?t=${Date.now()}`
+        previewUrl.value = previewAddress(true)
         previewVisible.value = true
         previewKey.value += 1
       }
@@ -267,7 +313,7 @@ async function handleWorkspaceAction(kind: 'offline' | 'feature') {
 }
 async function handleRestored() {
   await refreshApp()
-  previewUrl.value = `${getAppPreviewUrl(appId.value)}?t=${Date.now()}`
+  previewUrl.value = previewAddress(true)
   previewVisible.value = true
   previewKey.value += 1
 }
@@ -379,7 +425,7 @@ async function initializeHistory(sequence = loadSequence) {
   const loaded = await loadChatHistory(false, sequence)
   if (!loaded || sequence !== loadSequence) return
   if (messages.value.length >= 2 || (app.value?.currentVersion ?? 0) > 0) {
-    previewUrl.value = getAppPreviewUrl(appId.value)
+    previewUrl.value = previewAddress()
     previewVisible.value = true
     previewKey.value += 1
   }
@@ -415,7 +461,7 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
 
   if (success) {
     aiMessage.status = 'done'
-    previewUrl.value = `${getAppPreviewUrl(appId.value)}?t=${Date.now()}`
+    previewUrl.value = previewAddress(true)
     previewVisible.value = true
     previewKey.value += 1
     message.success('应用生成完成')
@@ -515,7 +561,7 @@ function sendMessage(rawMessage: string) {
     message.warning(readOnlyHint.value || '应用信息尚未加载')
     return
   }
-  const content = rawMessage.trim()
+  let content = rawMessage.trim()
   if (!content) {
     message.warning('请输入消息内容')
     return
@@ -527,6 +573,21 @@ function sendMessage(rawMessage: string) {
     message.warning('AI 正在生成中，请稍候')
     return
   }
+
+  if (selectedElementInfo.value) {
+    const element = selectedElementInfo.value
+    content += '\n\n选中元素信息：'
+    if (element.pagePath) content += `\n- 页面路径: ${element.pagePath}`
+    content += `\n- 标签: ${element.tagName.toLowerCase()}\n- 选择器: ${element.selector}`
+    if (element.textContent) content += `\n- 当前内容: ${element.textContent.substring(0, 100)}`
+  }
+  if (content.length > 2000) {
+    message.warning('消息与选中元素信息合计最多 2000 字，请缩短修改要求或重新选择更具体的元素')
+    return
+  }
+  clearSelectedElement()
+  visualEditor.disableEditMode()
+  isEditMode.value = false
 
   const userMessage: ChatMessage = {
     id: nextMessageId(),
@@ -569,6 +630,7 @@ function handleComposerKeydown(event: KeyboardEvent) {
 }
 
 async function loadApp() {
+  resetVisualEditor()
   const sequence = ++loadSequence
   statisticsAbort?.abort()
   exportAbort?.abort()
@@ -623,7 +685,7 @@ async function loadApp() {
     if (res.data.code === 0 && res.data.data) {
       app.value = res.data.data
       if ((app.value.currentVersion || 0) > 0 || app.value.generationStatus === 'SUCCEEDED') {
-        previewUrl.value = getAppPreviewUrl(appId.value)
+        previewUrl.value = previewAddress()
         previewVisible.value = true
         previewKey.value += 1
       }
@@ -696,7 +758,9 @@ async function handleDeploy() {
 
 function openPreview() {
   if (previewUrl.value) {
-    window.open(previewUrl.value, '_blank', 'noopener,noreferrer')
+    const url = new URL(previewUrl.value, window.location.origin)
+    url.searchParams.delete('visualEditor')
+    window.open(url.href, '_blank', 'noopener,noreferrer')
   }
 }
 
@@ -757,6 +821,8 @@ watch(
 watch(isGenerating, scheduleStatus)
 
 onBeforeUnmount(() => {
+  resetVisualEditor()
+  window.removeEventListener('message', handleIframeMessage)
   statisticsAbort?.abort()
   exportAbort?.abort()
   historyAbort?.abort()
@@ -980,6 +1046,34 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
+        <a-alert
+          v-if="selectedElementInfo"
+          class="selected-element-alert"
+          type="info"
+          closable
+          @close="clearSelectedElement"
+        >
+          <template #message>
+            <div class="selected-element-info">
+              <strong>选中元素：{{ selectedElementInfo.tagName.toLowerCase() }}</strong>
+              <span v-if="selectedElementInfo.id"> #{{ selectedElementInfo.id }}</span>
+              <span v-if="selectedElementInfo.className">
+                .{{ selectedElementInfo.className.split(' ').join('.') }}</span
+              >
+              <div v-if="selectedElementInfo.textContent">
+                内容：{{ selectedElementInfo.textContent.substring(0, 50)
+                }}{{ selectedElementInfo.textContent.length > 50 ? '...' : '' }}
+              </div>
+              <div v-if="selectedElementInfo.pagePath">
+                页面路径：{{ selectedElementInfo.pagePath }}
+              </div>
+              <div>
+                选择器：<code>{{ selectedElementInfo.selector }}</code>
+              </div>
+            </div>
+          </template>
+        </a-alert>
+
         <div class="chat-panel__composer">
           <a-tooltip :title="readOnlyHint">
             <div>
@@ -996,7 +1090,12 @@ onBeforeUnmount(() => {
                   historyLoading ||
                   !isOwner
                 "
-                :placeholder="readOnlyHint || '请描述你想生成的网站，越详细效果越好哦'"
+                :placeholder="
+                  readOnlyHint ||
+                  (selectedElementInfo
+                    ? `正在编辑 ${selectedElementInfo.tagName.toLowerCase()} 元素，描述您想要的修改...`
+                    : '请描述你想生成的网站，越详细效果越好哦')
+                "
                 @keydown="handleComposerKeydown"
               />
             </div>
@@ -1005,6 +1104,14 @@ onBeforeUnmount(() => {
             <span class="chat-panel__composer-hint">{{
               readOnlyHint || 'Ctrl / ⌘ + Enter 发送'
             }}</span>
+            <a-button
+              v-if="isOwner && previewVisible && !isGenerating"
+              :danger="isEditMode"
+              :disabled="!previewReady || deployLoading || deleting"
+              @click="toggleEditMode"
+            >
+              <template #icon><EditOutlined /></template>{{ isEditMode ? '退出编辑' : '编辑模式' }}
+            </a-button>
             <a-button v-if="isGenerating && isOwner" danger :loading="stopping" @click="handleStop"
               ><template #icon><StopOutlined /></template>停止生成</a-button
             >
@@ -1039,14 +1146,27 @@ onBeforeUnmount(() => {
             <LinkOutlined />
             生成效果
           </span>
-          <a-button v-if="previewVisible" size="small" @click="openPreview">新窗口打开</a-button>
+          <div class="preview-panel__actions">
+            <a-button
+              v-if="isOwner && previewVisible"
+              size="small"
+              :danger="isEditMode"
+              :disabled="isGenerating || !previewReady || deployLoading || deleting"
+              @click="toggleEditMode"
+            >
+              <template #icon><EditOutlined /></template>{{ isEditMode ? '退出编辑' : '编辑模式' }}
+            </a-button>
+            <a-button v-if="previewVisible" size="small" @click="openPreview">新窗口打开</a-button>
+          </div>
         </div>
         <div class="preview-panel__body">
           <iframe
             v-if="previewVisible"
             :key="previewKey"
+            ref="previewIframe"
             class="preview-panel__iframe"
             :src="previewUrl"
+            @load="onPreviewLoad"
             title="应用预览"
             sandbox="allow-forms allow-modals allow-scripts allow-same-origin"
           />
@@ -1100,6 +1220,24 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.preview-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.selected-element-alert {
+  flex: none;
+  margin: 0 16px;
+}
+.selected-element-info {
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.selected-element-info code {
+  color: #d73a49;
+}
+
 .chat-rounds {
   cursor: pointer;
 }

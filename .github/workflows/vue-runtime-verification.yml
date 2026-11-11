@@ -51,18 +51,20 @@ jobs:
         run: docker version
       - name: Verify streams, workspace and actual Docker builds
         working-directory: appforge-backend
-        run: bash mvnw -B -Dtest=CoverTaskTest,CoverWorkerTest,CoverHttpTest,CoverChromeTest,CoverMySqlTest,VueBuilderRegistrationTest,VueProjectRuntimeTest,ToolStreamHandlerTest,VueToolStreamingTest,VueToolHttpCancellationTest,LangchainConfigurationTest,NativeCodeCompletionTest,CancellableCodeStreamTest,NativeAssetsTest,NativeSourceDownloadTest,AiCodeGeneratorServiceFactoryTest,AppCreationModeTest,AppWorkspaceTest,AiCodeGeneratorFacadeMemoryTest,AppServiceAccessTest,ChatHistoryIntegrationTest,ChatConversationExtensionsTest,AppMetadataTest,CodeParserTest,VueProjectTest test
+        run: bash mvnw -B -Dtest=VisualEditToolsTest,CoverTaskTest,CoverWorkerTest,CoverHttpTest,CoverChromeTest,CoverMySqlTest,VueBuilderRegistrationTest,VueProjectRuntimeTest,ToolStreamHandlerTest,VueToolStreamingTest,VueToolHttpCancellationTest,LangchainConfigurationTest,NativeCodeCompletionTest,CancellableCodeStreamTest,NativeAssetsTest,NativeSourceDownloadTest,AiCodeGeneratorServiceFactoryTest,AppCreationModeTest,AppWorkspaceTest,AiCodeGeneratorFacadeMemoryTest,AppServiceAccessTest,ChatHistoryIntegrationTest,ChatConversationExtensionsTest,AppMetadataTest,CodeParserTest,VueProjectTest test
       - name: Screenshot the actual Docker-built Vue project
         working-directory: appforge-backend
         env:
           APPFORGE_COVER_PROJECT_DIST: target/vue-runtime-evidence/dist
-        run: bash mvnw -B -Dtest=CoverChromeTest test
+          APPFORGE_VISUAL_PROJECT_DIST: target/vue-runtime-evidence/dist
+        run: bash mvnw -B -Dtest=CoverChromeTest,VisualEditToolsTest test
       - name: Preserve runtime evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: vue-runtime-evidence
           path: |
+            appforge-backend/target/visual-edit-fixture
             appforge-backend/target/cover-evidence
             appforge-backend/target/cover-render-fixture.json
             appforge-backend/target/vue-runtime-evidence

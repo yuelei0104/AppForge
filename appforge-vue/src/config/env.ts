@@ -4,10 +4,7 @@ function normalizeBase(value: string | undefined, fallback: string) {
   return base.replace(/\/+$/, '')
 }
 
-export const API_BASE_URL = normalizeBase(
-  import.meta.env.VITE_API_BASE_URL,
-  'http://localhost:8123/api',
-)
+export const API_BASE_URL = normalizeBase(import.meta.env.VITE_API_BASE_URL, '/api')
 export const DEPLOY_DOMAIN = normalizeBase(
   import.meta.env.VITE_DEPLOY_DOMAIN,
   `${API_BASE_URL}/deploy`,
