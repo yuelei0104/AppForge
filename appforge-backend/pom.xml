@@ -28,6 +28,8 @@
     <!-- 统一管理 langchain4j 版本 -->
     <langchain4j.version>1.11.11</langchain4j.version>
     <langchain4j.beta.version>1.11.11-beta19</langchain4j.beta.version>
+    <!-- Redis memory beta19 is compiled against Jedis 7; Boot 3.5 otherwise selects 6.0.0. -->
+    <jedis.version>7.2.1</jedis.version>
   </properties>
 
   <dependencies>
