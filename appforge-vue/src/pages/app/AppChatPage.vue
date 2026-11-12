@@ -6,6 +6,7 @@ import {
 } from '@/api/chatHistoryController'
 import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 import { validateMarkdownExport } from '@/utils/chatExport'
+import { streamErrorMessage } from '@/utils/guardrail'
 import ChatMemoryModal from '@/components/ChatMemoryModal.vue'
 import GenerationProgress from '@/components/GenerationProgress.vue'
 import CodeWorkspace from '@/components/CodeWorkspace.vue'
@@ -640,7 +641,7 @@ function openEventSource(requestId: string, aiMessage: ChatMessage) {
     if (eventSource !== es) return
     let errorText = '请求处理失败，请稍后重试'
     try {
-      errorText = JSON.parse((event as MessageEvent).data).message || errorText
+      errorText = streamErrorMessage(JSON.parse((event as MessageEvent).data), errorText)
     } catch {
       /* 保留默认说明 */
     }
@@ -651,7 +652,7 @@ function openEventSource(requestId: string, aiMessage: ChatMessage) {
     if (eventSource !== es) return
     let errorText = '模型生成失败，请稍后重试'
     try {
-      errorText = JSON.parse((event as MessageEvent).data).message || errorText
+      errorText = streamErrorMessage(JSON.parse((event as MessageEvent).data), errorText)
     } catch {
       /* 保留默认说明 */
     }

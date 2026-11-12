@@ -290,6 +290,8 @@ public class AppGenerationService {
     }
 
     public static String safeError(Throwable error) {
+        String guardrail = com.yuelei.appforge.ai.guardrail.GuardrailErrors.message(error);
+        if (guardrail != null) return guardrail;
         if (error instanceof BusinessException) return error.getMessage();
         for (Throwable e = error; e != null; e = e.getCause()) {
             if (e instanceof java.net.SocketTimeoutException

@@ -9,6 +9,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.yuelei.appforge.ai.AiCodeGenTypeRoutingService;
 import com.yuelei.appforge.ai.AiCodeGenTypeRoutingServiceFactory;
+import com.yuelei.appforge.ai.guardrail.PromptSafetyInputGuardrail;
 import com.yuelei.appforge.constant.AppConstant;
 import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.exception.ErrorCode;
@@ -70,6 +71,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource private ChatHistoryService chatHistoryService;
 
     @Resource private AttachmentService attachmentService;
+
+    @Resource
+    private PromptSafetyInputGuardrail promptSafetyInputGuardrail =
+            new PromptSafetyInputGuardrail();
 
     @Resource private com.yuelei.appforge.cover.AppCoverTasks coverTasks;
     @Resource private org.springframework.transaction.support.TransactionTemplate coverTransaction;
@@ -555,107 +560,136 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 "应用 ID 或消息无效，消息最多 2000 字");
         App app = getAppById(appId);
         AppPolicy.owner(app, loginUser);
-        return Flux.defer(
-                () -> {
-                    StringBuilder response = new StringBuilder();
-                    AtomicBoolean recorded = new AtomicBoolean();
-                    AtomicLong userMessageId = new AtomicLong();
-                    List<Long> ownedAttachmentIds =
-                            attachmentIds == null ? List.of() : attachmentIds;
-                    List<com.yuelei.appforge.model.entity.AppAttachment> attachments =
-                            attachmentService == null
-                                    ? List.of()
-                                    : attachmentService.requireOwned(
-                                            ownedAttachmentIds, appId, loginUser);
-                    String elementBlock =
-                            element == null || element.isBlank()
-                                    ? ""
-                                    : "\n\n<element_context>\n" + element + "\n</element_context>";
-                    String prompt =
-                            message
-                                    + elementBlock
-                                    + (attachmentService == null
+        return Flux.defer(() -> {
+            AtomicBoolean reviewCancelled = new AtomicBoolean();
+            return Flux.defer(
+                        () -> {
+                            StringBuilder response = new StringBuilder();
+                            AtomicBoolean recorded = new AtomicBoolean();
+                            AtomicLong userMessageId = new AtomicLong();
+                            List<Long> ownedAttachmentIds =
+                                    attachmentIds == null ? List.of() : attachmentIds;
+                            List<com.yuelei.appforge.model.entity.AppAttachment> attachments =
+                                    attachmentService == null
+                                            ? List.of()
+                                            : attachmentService.requireOwned(
+                                                    ownedAttachmentIds, appId, loginUser);
+                            String elementBlock =
+                                    element == null || element.isBlank()
                                             ? ""
-                                            : attachmentService.buildPromptBlock(attachments));
-                    var source =
-                            generation.generate(
-                                    app,
-                                    prompt,
-                                    () -> {
-                                        userMessageId.set(
-                                                chatHistoryService.appendChatMessage(
-                                                        appId,
-                                                        message,
-                                                        ChatHistoryMessageTypeEnum.USER.getValue(),
-                                                        loginUser.getId()));
-                                        try {
-                                            if (attachmentService != null
-                                                    && !ownedAttachmentIds.isEmpty()) {
-                                                attachmentService.bindToMessage(
-                                                        ownedAttachmentIds,
-                                                        userMessageId.get(),
-                                                        loginUser.getId());
-                                            }
-                                        } catch (RuntimeException bindError) {
-                                            log.warn(
-                                                    "绑定聊天附件失败 appId={} userMessageId={}",
-                                                    appId,
-                                                    userMessageId.get(),
-                                                    bindError);
-                                        }
-                                        recorded.set(true);
-                                    },
-                                    userMessageId::get,
-                                    progress,
-                                    onFileChange);
-                    return streamHandlerExecutor
-                            .doExecute(
-                                    source,
-                                    CodeGenTypeEnum.getEnumByValue(app.getCodeGenType()),
-                                    response::append)
-                            .doOnComplete(
-                                    () -> {
-                                        if (!response.isEmpty()) {
-                                            ThrowUtils.throwIf(
-                                                    !chatHistoryService.addChatMessage(
+                                            : "\n\n<element_context>\n"
+                                                    + element
+                                                    + "\n</element_context>";
+                            var prepared =
+                                    promptSafetyInputGuardrail.prepare(
+                                            message,
+                                            elementBlock
+                                                    + (attachmentService == null
+                                                            ? ""
+                                                            : attachmentService.buildPromptBlock(
+                                                                    attachments)),
+                                            loginUser.getId(),
+                                            appId,
+                                            "CHAT");
+                            if (reviewCancelled.get()) return Flux.empty();
+                            String safeMessage = prepared.message();
+                            String prompt = safeMessage + prepared.context();
+                            if (prepared.rewritten()) {
+                                progress.accept(
+                                        new com.yuelei.appforge.workspace.GenerationProgress(
+                                                prepared.requestId(),
+                                                "guardrail",
+                                                "",
+                                                "SUCCEEDED",
+                                                "已移除越权指令或隐藏敏感信息，将按安全版本生成"));
+                            }
+                            var source =
+                                    generation.generate(
+                                            app,
+                                            prompt,
+                                            () -> {
+                                                userMessageId.set(
+                                                        chatHistoryService.appendChatMessage(
+                                                                appId,
+                                                                safeMessage,
+                                                                ChatHistoryMessageTypeEnum.USER
+                                                                        .getValue(),
+                                                                loginUser.getId()));
+                                                try {
+                                                    if (attachmentService != null
+                                                            && !ownedAttachmentIds.isEmpty()) {
+                                                        attachmentService.bindToMessage(
+                                                                ownedAttachmentIds,
+                                                                userMessageId.get(),
+                                                                loginUser.getId());
+                                                    }
+                                                } catch (RuntimeException bindError) {
+                                                    log.warn(
+                                                            "绑定聊天附件失败 appId={} userMessageId={}",
                                                             appId,
-                                                            response.toString(),
-                                                            ChatHistoryMessageTypeEnum.AI
-                                                                    .getValue(),
-                                                            loginUser.getId()),
-                                                    ErrorCode.OPERATION_ERROR,
-                                                    "保存 AI 消息失败");
-                                            generation.afterConversationSaved(
-                                                    appId, message, response.toString());
-                                        }
-                                    })
-                            .doOnError(
-                                    error -> {
-                                        if (recorded.get()) {
-                                            String text =
-                                                    error
-                                                                    instanceof
-                                                                    AppGenerationService
-                                                                            .GenerationStoppedException
-                                                            ? "生成已停止，未保存不完整代码"
-                                                            : "AI 回复失败："
-                                                                    + AppGenerationService
-                                                                            .safeError(error);
-                                            try {
-                                                chatHistoryService.addChatMessage(
-                                                        appId,
-                                                        text,
-                                                        ChatHistoryMessageTypeEnum.AI.getValue(),
-                                                        loginUser.getId());
-                                            } catch (RuntimeException persistenceError) {
-                                                log.error(
-                                                        "保存失败消息出错 appId={}",
-                                                        appId,
-                                                        persistenceError);
-                                            }
-                                        }
-                                    });
-                });
+                                                            userMessageId.get(),
+                                                            bindError);
+                                                }
+                                                recorded.set(true);
+                                            },
+                                            userMessageId::get,
+                                            progress,
+                                            onFileChange);
+                            return streamHandlerExecutor
+                                    .doExecute(
+                                            source,
+                                            CodeGenTypeEnum.getEnumByValue(app.getCodeGenType()),
+                                            response::append)
+                                    .doOnComplete(
+                                            () -> {
+                                                if (!response.isEmpty()) {
+                                                    ThrowUtils.throwIf(
+                                                            !chatHistoryService.addChatMessage(
+                                                                    appId,
+                                                                    response.toString(),
+                                                                    ChatHistoryMessageTypeEnum.AI
+                                                                            .getValue(),
+                                                                    loginUser.getId()),
+                                                            ErrorCode.OPERATION_ERROR,
+                                                            "保存 AI 消息失败");
+                                                    generation.afterConversationSaved(
+                                                            appId,
+                                                            safeMessage,
+                                                            response.toString());
+                                                }
+                                            })
+                                    .doOnError(
+                                            error -> {
+                                                if (recorded.get()) {
+                                                    String text =
+                                                            error
+                                                                            instanceof
+                                                                            AppGenerationService
+                                                                                    .GenerationStoppedException
+                                                                    ? "生成已停止，未保存不完整代码"
+                                                                    : "AI 回复失败："
+                                                                            + AppGenerationService
+                                                                                    .safeError(
+                                                                                            error);
+                                                    try {
+                                                        chatHistoryService.addChatMessage(
+                                                                appId,
+                                                                text,
+                                                                ChatHistoryMessageTypeEnum.AI
+                                                                        .getValue(),
+                                                                loginUser.getId());
+                                                    } catch (RuntimeException persistenceError) {
+                                                        log.error(
+                                                                "保存失败消息出错 appId={}",
+                                                                appId,
+                                                                persistenceError);
+                                                    }
+                                                }
+                                            });
+                        })
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .doOnCancel(() -> reviewCancelled.set(true));
+        });
     }
 
     @Override
@@ -719,9 +753,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 参数校验
         String initPrompt = appAddRequest.getInitPrompt();
         ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
+        var prepared =
+                promptSafetyInputGuardrail.prepare(
+                        initPrompt, "", loginUser.getId(), null, "CREATE_APP");
+        initPrompt = prepared.message();
         // 构造入库对象
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
+        app.setInitPrompt(initPrompt);
         app.setUserId(loginUser.getId());
         // 应用名称暂时为 initPrompt 前 12 位
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));

@@ -9,6 +9,7 @@ const labels: Record<string, string> = {
   delete_file: '删除文件',
   prepare: '准备构建环境',
   build: '构建网站',
+  guardrail: '安全检查',
 }
 </script>
 <template>
@@ -24,7 +25,9 @@ const labels: Record<string, string> = {
       <div>
         <span>{{ labels[item.operation] || '处理文件' }}</span
         ><code v-if="item.path">{{ item.path }}</code
-        ><small v-if="item.state === 'FAILED'">{{ item.message }}</small
+        ><small v-if="item.state === 'FAILED' || item.operation === 'guardrail'">{{
+          item.message
+        }}</small
         ><small v-else-if="stopped && item.state === 'RUNNING'">已结束</small>
       </div>
     </li>
