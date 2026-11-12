@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 
 import com.mybatisflex.core.paginate.Page;
 import com.yuelei.appforge.annotation.AuthCheck;
+import com.yuelei.appforge.ai.guardrail.PromptSafetyInputGuardrail;
 import com.yuelei.appforge.common.*;
 import com.yuelei.appforge.constant.AppConstant;
 import com.yuelei.appforge.constant.UserConstant;
@@ -13,6 +14,8 @@ import com.yuelei.appforge.model.dto.chat.ChatRequest;
 import com.yuelei.appforge.model.entity.App;
 import com.yuelei.appforge.model.entity.User;
 import com.yuelei.appforge.model.vo.AppVO;
+import com.yuelei.appforge.ratelimiter.RateLimit;
+import com.yuelei.appforge.ratelimiter.RateLimitType;
 import com.yuelei.appforge.service.*;
 import com.yuelei.appforge.workspace.*;
 
@@ -20,6 +23,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -40,6 +44,7 @@ public class AppController {
     @Resource private UserService userService;
     @Resource private AppWorkspaceService workspace;
     @Resource private ChatTicketService chatTicketService;
+    @Resource private PromptSafetyInputGuardrail promptSafetyInputGuardrail;
 
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
@@ -81,6 +86,11 @@ public class AppController {
     }
 
     @PostMapping("/good/list/page/vo")
+    @Cacheable(
+        value = "good_app_page",
+        key = "T(com.yuelei.appforge.utils.CacheKeyUtils).generateKey(#appQueryRequest)",
+        condition = "#appQueryRequest.pageNum <= 10"
+    )
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest body) {
         return ResultUtils.success(appService.listFeaturedAppByPage(body));
     }
@@ -176,6 +186,7 @@ public class AppController {
 
     /** SSE 错误始终以事件返回，避免异常处理器将 JSON 写入 text/event-stream。 */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RateLimit(limitType = RateLimitType.USER, rate = 5, rateInterval = 60, message = "AI 对话请求过于频繁，请稍后再试")
     public SseEmitter chatToGenCode(
             @RequestParam(required = false) Long appId,
             @RequestParam(required = false) String message,
@@ -199,6 +210,8 @@ public class AppController {
         final String finalMessage = message;
         final List<Long> finalAttachmentIds = attachmentIds;
         final String finalElement = element;
+        // 在建立 SSE 连接前拦截提示词注入，失败由 GlobalExceptionHandler 返回 business-error。
+        promptSafetyInputGuardrail.ensureSafe(finalMessage);
         SseEmitter emitter =
                 new SseEmitter(0L) {
                     @Override

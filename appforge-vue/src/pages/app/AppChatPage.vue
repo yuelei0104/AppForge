@@ -546,6 +546,23 @@ function finishStream(aiMessage: ChatMessage, success: boolean) {
   void scrollToBottom()
 }
 
+function failStream(aiMessage: ChatMessage, errorText: string) {
+  if (!streaming.value) return
+  streaming.value = false
+  previewLoading.value = false
+  closeStream()
+  aiMessage.status = 'error'
+  if (!aiMessage.content) aiMessage.content = `❌ ${errorText}`
+  if (app.value) {
+    app.value.generationStatus = 'FAILED'
+    app.value.generationError = errorText
+  }
+  message.error(errorText)
+  void refreshApp()
+  void loadStatistics()
+  void scrollToBottom()
+}
+
 function openEventSource(requestId: string, aiMessage: ChatMessage) {
   const url = `${API_BASE_URL}/app/chat/gen/code?requestId=${encodeURIComponent(requestId)}`
 
@@ -619,6 +636,17 @@ function openEventSource(requestId: string, aiMessage: ChatMessage) {
     finishStream(aiMessage, true)
   })
 
+  es.addEventListener('business-error', (event) => {
+    if (eventSource !== es) return
+    let errorText = '请求处理失败，请稍后重试'
+    try {
+      errorText = JSON.parse((event as MessageEvent).data).message || errorText
+    } catch {
+      /* 保留默认说明 */
+    }
+    failStream(aiMessage, errorText)
+  })
+
   es.addEventListener('generation-error', (event) => {
     if (eventSource !== es) return
     let errorText = '模型生成失败，请稍后重试'
@@ -627,18 +655,7 @@ function openEventSource(requestId: string, aiMessage: ChatMessage) {
     } catch {
       /* 保留默认说明 */
     }
-    streaming.value = false
-    previewLoading.value = false
-    aiMessage.status = 'error'
-    if (!aiMessage.content) aiMessage.content = errorText
-    if (app.value) {
-      app.value.generationStatus = 'FAILED'
-      app.value.generationError = errorText
-    }
-    closeStream()
-    message.error(errorText)
-    void refreshApp()
-    void loadStatistics()
+    failStream(aiMessage, errorText)
   })
   es.addEventListener('stopped', () => {
     if (eventSource !== es) return

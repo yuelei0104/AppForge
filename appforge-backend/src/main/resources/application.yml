@@ -16,13 +16,15 @@ spring:
     redis:
       host: 127.0.0.1
       port: 6379
-      password: 123456
+      database: 0
+      password: "${REDIS_PASSWORD:}"
       ttl: 3600
   # session 配置
   session:
     store-type: redis
     # session 30 天过期
     timeout: 2592000
+
 
 
 server:
@@ -66,6 +68,24 @@ langchain4j:
       log-requests: true
       log-responses: true
       reasoning-effort: none
+
+    # 推理 AI 模型配置（用于复杂的推理任务）
+    reasoning-streaming-chat-model:
+      base-url: https://api.deepseek.com
+      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      model-name: deepseek-flash
+      max-tokens: 32768
+      temperature: 0.1
+      log-requests: true
+      log-responses: true
+    # 智能路由 AI 模型配置（用于简单的分类任务）
+    routing-chat-model:
+      base-url: https://api.deepseek.com
+      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      model-name: deepseek-flash
+      log-requests: true
+      log-responses: true
+
 
 logging:
   level:

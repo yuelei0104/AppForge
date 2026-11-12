@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.service.ChatHistoryService;
 
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
@@ -16,6 +17,7 @@ import dev.langchain4j.model.chat.response.ChatResponse;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.*;
@@ -127,6 +129,26 @@ class AiCodeGeneratorServiceFactoryTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void selectsPrototypeModelByCodeGenType() {
+        var prototypeFactory = new AiCodeGeneratorServiceFactory();
+        var context = mock(ApplicationContext.class);
+        var reasoning = mock(StreamingChatModel.class);
+        var normal = mock(StreamingChatModel.class);
+        when(context.getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class))
+                .thenReturn(reasoning);
+        when(context.getBean("streamingChatModelPrototype", StreamingChatModel.class))
+                .thenReturn(normal);
+        ReflectionTestUtils.setField(prototypeFactory, "applicationContext", context);
+
+        assertSame(reasoning, prototypeFactory.getStreamingChatModel(CodeGenTypeEnum.VUE_PROJECT));
+        assertSame(normal, prototypeFactory.getStreamingChatModel(CodeGenTypeEnum.HTML));
+        assertSame(normal, prototypeFactory.getStreamingChatModel(CodeGenTypeEnum.MULTI_FILE));
+        assertThrows(
+                com.yuelei.appforge.exception.BusinessException.class,
+                () -> prototypeFactory.getStreamingChatModel(null));
     }
 
     @Test

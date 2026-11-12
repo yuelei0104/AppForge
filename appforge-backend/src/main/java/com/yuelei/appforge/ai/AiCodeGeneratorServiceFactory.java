@@ -2,6 +2,10 @@ package com.yuelei.appforge.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.yuelei.appforge.ai.guardrail.PromptSafetyInputGuardrail;
+import com.yuelei.appforge.exception.BusinessException;
+import com.yuelei.appforge.exception.ErrorCode;
+import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.service.ChatHistoryService;
 
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
@@ -14,6 +18,7 @@ import jakarta.annotation.Resource;
 
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -30,11 +35,15 @@ import java.time.Duration;
 @Slf4j
 public class AiCodeGeneratorServiceFactory {
 
-    @Resource
+    @Resource(name = "openAiChatModel")
     private ChatModel chatModel;
+
 
     @Resource(name = "openAiStreamingChatModel")
     private StreamingChatModel streamingChatModel;
+
+    @Resource
+    private ApplicationContext applicationContext;
 
     @Resource
     private RedisChatMemoryStore redisChatMemoryStore;
@@ -65,6 +74,32 @@ public class AiCodeGeneratorServiceFactory {
                                 log.debug("AI 服务实例被移除, appId: {}, 原因: {}", key, cause);
                             })
                     .build();
+
+    /**
+     * 为不同代码生成类型选择模型 Bean。
+     *
+     * <p>两类模型都声明为 prototype，每次生成取一个新实例，避免多个应用并发生成时
+     * 共享同一个流式模型客户端。Vue 工程需要更强的推理能力，使用 reasoning 配置；
+     * HTML / MULTI_FILE 使用普通流式配置。</p>
+     *
+     * @param codeGenType 代码生成类型
+     * @return 本次生成使用的流式模型
+     */
+    public StreamingChatModel getStreamingChatModel(CodeGenTypeEnum codeGenType) {
+        if (codeGenType == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
+        }
+        // 单元测试直接 new 工厂时没有 Spring 上下文，退回到注入的 mock。
+        if (applicationContext == null) {
+            return streamingChatModel;
+        }
+        String beanName =
+                switch (codeGenType) {
+                    case VUE_PROJECT -> "reasoningStreamingChatModelPrototype";
+                    case HTML, MULTI_FILE -> "streamingChatModelPrototype";
+                };
+        return applicationContext.getBean(beanName, StreamingChatModel.class);
+    }
 
     /**
      * 根据 appId 获取对应的 AI 服务实例。
@@ -145,8 +180,9 @@ public class AiCodeGeneratorServiceFactory {
         AiCodeGeneratorService service =
                 AiServices.builder(AiCodeGeneratorService.class)
                         .chatModel(chatModel)
-                        .streamingChatModel(streamingChatModel)
+                        .streamingChatModel(getStreamingChatModel(CodeGenTypeEnum.HTML))
                         .chatMemory(chatMemory)
+                        .inputGuardrails(new PromptSafetyInputGuardrail())
                         .build();
         return new CachedService(service, chatMemory);
     }

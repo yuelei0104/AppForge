@@ -2,9 +2,8 @@ package com.yuelei.appforge.workspace.vue;
 
 import com.yuelei.appforge.ai.AiCodeGeneratorServiceFactory;
 import com.yuelei.appforge.core.AiCodeGeneratorFacade;
+import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.workspace.GenerationMode;
-
-import dev.langchain4j.model.chat.StreamingChatModel;
 
 import jakarta.annotation.Resource;
 
@@ -17,9 +16,6 @@ import reactor.core.scheduler.Schedulers;
 public class VueProjectRunner {
     @Resource private AiCodeGeneratorServiceFactory factory;
     @Resource private AiCodeGeneratorFacade facade;
-
-    @Resource(name = "reasoningStreamingChatModel")
-    private StreamingChatModel streamingChatModel;
 
     @Resource private VueProjectBuilder builder;
     @Resource private com.yuelei.appforge.ai.tools.ToolManager toolManager;
@@ -48,7 +44,10 @@ public class VueProjectRunner {
                     var service =
                             factory.vueProjectService(
                                     manager.getTools(task, mode),
-                                    new BudgetedStreamingModel(streamingChatModel, task));
+                                    new BudgetedStreamingModel(
+                                            factory.getStreamingChatModel(
+                                                    CodeGenTypeEnum.VUE_PROJECT),
+                                            task));
                     var stream =
                             mode == GenerationMode.CREATE
                                     ? service.create(prompt)

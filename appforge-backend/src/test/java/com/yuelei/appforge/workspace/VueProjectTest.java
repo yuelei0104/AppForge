@@ -213,9 +213,10 @@ class VueProjectTest {
                         return req;
                     }
                 };
-        ReflectionTestUtils.setField(runner, "factory", new AiCodeGeneratorServiceFactory());
+        var factory = new AiCodeGeneratorServiceFactory();
+        ReflectionTestUtils.setField(factory, "streamingChatModel", model);
+        ReflectionTestUtils.setField(runner, "factory", factory);
         ReflectionTestUtils.setField(runner, "facade", facade);
-        ReflectionTestUtils.setField(runner, "streamingChatModel", model);
         ReflectionTestUtils.setField(runner, "builder", builder);
         return runner;
     }
@@ -689,6 +690,10 @@ class VueProjectTest {
         var controller = new AppController();
         ReflectionTestUtils.setField(controller, "appService", service);
         ReflectionTestUtils.setField(controller, "userService", users);
+        ReflectionTestUtils.setField(
+                controller,
+                "promptSafetyInputGuardrail",
+                new com.yuelei.appforge.ai.guardrail.PromptSafetyInputGuardrail());
         var mvc = MockMvcBuilders.standaloneSetup(controller).build();
         var result =
                 mvc.perform(get("/app/chat/gen/code").param("appId", "1").param("message", "创建网站"))
