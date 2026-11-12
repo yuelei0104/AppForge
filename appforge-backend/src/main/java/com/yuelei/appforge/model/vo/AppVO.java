@@ -1,11 +1,14 @@
 package com.yuelei.appforge.model.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AppVO implements Serializable {
     private Boolean coverEnabled;
     private String coverMode;

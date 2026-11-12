@@ -3,12 +3,14 @@ package com.yuelei.appforge.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.yuelei.appforge.ai.guardrail.PromptSafetyInputGuardrail;
+import com.yuelei.appforge.ai.guardrail.RetryOutputGuardrail;
 import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.exception.ErrorCode;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.service.ChatHistoryService;
 
 import dev.langchain4j.community.store.memory.chat.redis.RedisChatMemoryStore;
+import dev.langchain4j.guardrail.config.OutputGuardrailsConfig;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -183,6 +185,9 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(getStreamingChatModel(CodeGenTypeEnum.HTML))
                         .chatMemory(chatMemory)
                         .inputGuardrails(new PromptSafetyInputGuardrail())
+                        .outputGuardrails(new RetryOutputGuardrail())
+                        .outputGuardrailsConfig(
+                                OutputGuardrailsConfig.builder().maxRetries(3).build())
                         .build();
         return new CachedService(service, chatMemory);
     }

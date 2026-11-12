@@ -564,6 +564,14 @@ function failStream(aiMessage: ChatMessage, errorText: string) {
   void scrollToBottom()
 }
 
+function normalizeFileOperation(value?: string) {
+  if (!value) return ''
+  if (value === 'C') return 'CREATE'
+  if (value === 'U') return 'UPDATE'
+  if (value === 'D') return 'DELETE'
+  return value
+}
+
 function openEventSource(requestId: string, aiMessage: ChatMessage) {
   const url = `${API_BASE_URL}/app/chat/gen/code?requestId=${encodeURIComponent(requestId)}`
 
@@ -606,19 +614,26 @@ function openEventSource(requestId: string, aiMessage: ChatMessage) {
         operation?: string
         content?: string | null
         truncated?: boolean
+        p?: string
+        o?: string
+        c?: string
+        t?: boolean
       }
-      if (!change.path) return
-      if (change.operation === 'DELETE') {
-        delete liveFiles.value[change.path]
-        delete truncatedFiles.value[change.path]
-        deletedFiles.value[change.path] = true
-      } else if (change.operation === 'CREATE' || change.operation === 'UPDATE') {
-        delete deletedFiles.value[change.path]
-        if (typeof change.content === 'string') liveFiles.value[change.path] = change.content
-        if (change.truncated || typeof change.content !== 'string') {
-          truncatedFiles.value[change.path] = true
+      const path = change.path ?? change.p
+      const operation = normalizeFileOperation(change.operation ?? change.o)
+      if (!path) return
+      if (operation === 'DELETE') {
+        delete liveFiles.value[path]
+        delete truncatedFiles.value[path]
+        deletedFiles.value[path] = true
+      } else if (operation === 'CREATE' || operation === 'UPDATE') {
+        const content = change.content ?? change.c
+        delete deletedFiles.value[path]
+        if (typeof content === 'string') liveFiles.value[path] = content
+        if (change.truncated || change.t || typeof content !== 'string') {
+          truncatedFiles.value[path] = true
         } else {
-          delete truncatedFiles.value[change.path]
+          delete truncatedFiles.value[path]
         }
       }
     } catch {
@@ -629,8 +644,9 @@ function openEventSource(requestId: string, aiMessage: ChatMessage) {
   es.addEventListener('done', (event) => {
     if (eventSource !== es) return
     try {
-      const payload = JSON.parse((event as MessageEvent).data) as { version?: number }
-      if (payload.version != null && app.value) app.value.currentVersion = payload.version
+      const payload = JSON.parse((event as MessageEvent).data) as { version?: number; v?: number }
+      const version = payload.version ?? payload.v
+      if (version != null && app.value) app.value.currentVersion = version
     } catch {
       /* 版本号缺失时刷新应用信息兜底。 */
     }

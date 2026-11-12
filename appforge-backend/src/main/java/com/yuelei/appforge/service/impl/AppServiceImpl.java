@@ -25,9 +25,11 @@ import com.yuelei.appforge.model.enums.ChatHistoryMessageTypeEnum;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
 import com.yuelei.appforge.model.vo.AppVO;
 import com.yuelei.appforge.model.vo.UserVO;
+import com.yuelei.appforge.service.AiResponseCacheService;
 import com.yuelei.appforge.service.AppService;
 import com.yuelei.appforge.service.AttachmentService;
 import com.yuelei.appforge.service.ChatHistoryService;
+import com.yuelei.appforge.service.ChatIntentService;
 import com.yuelei.appforge.service.UserService;
 import com.yuelei.appforge.workspace.*;
 
@@ -71,6 +73,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource private ChatHistoryService chatHistoryService;
 
     @Resource private AttachmentService attachmentService;
+
+    @Resource private ChatIntentService chatIntentService;
 
     @Resource
     private PromptSafetyInputGuardrail promptSafetyInputGuardrail =
@@ -561,6 +565,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App app = getAppById(appId);
         AppPolicy.owner(app, loginUser);
         return Flux.defer(() -> {
+            if (chatIntentService != null
+                    && chatIntentService.isSmallTalk(message, attachmentIds, element)) {
+                return chatIntentService.reply(appId, message, loginUser);
+            }
             AtomicBoolean reviewCancelled = new AtomicBoolean();
             return Flux.defer(
                         () -> {
@@ -748,6 +756,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
+    @Resource private AiResponseCacheService aiResponseCache;
+
     @Override
     public Long createApp(AppAddRequest appAddRequest, User loginUser) {
         // 参数校验
@@ -764,10 +774,18 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setUserId(loginUser.getId());
         // 应用名称暂时为 initPrompt 前 12 位
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
-        // 使用 AI 智能选择代码生成类型；每次调用创建新的路由服务，避免并发共享模型
-        AiCodeGenTypeRoutingService routingService =
-                aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
-        CodeGenTypeEnum selectedCodeGenType = routingService.routeCodeGenType(initPrompt);
+        // 先查路由缓存；未命中时才调用 AI 分类，命中时连模型都不会发起。
+        CodeGenTypeEnum selectedCodeGenType =
+                aiResponseCache == null ? null : aiResponseCache.findRoute(initPrompt);
+        if (selectedCodeGenType == null) {
+            // 每次调用创建新的路由服务，避免并发共享模型。
+            AiCodeGenTypeRoutingService routingService =
+                    aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
+            selectedCodeGenType = routingService.routeCodeGenType(initPrompt);
+            if (aiResponseCache != null) {
+                aiResponseCache.putRoute(initPrompt, selectedCodeGenType);
+            }
+        }
         app.setCodeGenType(selectedCodeGenType.getValue());
         // 插入数据库
         boolean result = this.save(app);

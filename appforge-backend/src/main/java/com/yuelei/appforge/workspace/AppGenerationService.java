@@ -6,6 +6,7 @@ import com.yuelei.appforge.core.parser.CodeParserExecutor;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.entity.*;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
+import com.yuelei.appforge.service.AiResponseCacheService;
 import com.yuelei.appforge.workspace.vue.*;
 
 import jakarta.annotation.Resource;
@@ -37,6 +38,7 @@ public class AppGenerationService {
     @Resource private AppWorkspaceService workspace;
     @Resource private AiCodeGeneratorFacade generator;
     @Resource private VueProjectRunner projectRunner;
+    @Resource private AiResponseCacheService aiResponseCache;
     private final Map<Long, Job> jobs = new ConcurrentHashMap<>();
 
     private static final class Job {
@@ -45,6 +47,7 @@ public class AppGenerationService {
         final AtomicBoolean stopped = new AtomicBoolean();
         final StringBuilder code = new StringBuilder();
         ProjectTask project;
+        GenerationMode mode;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -108,6 +111,7 @@ public class AppGenerationService {
         int baseline = workspace.ensureBaseline(id);
         GenerationMode mode = baseline > 0 ? GenerationMode.EDIT : GenerationMode.CREATE;
         Job job = new Job();
+        job.mode = mode;
         ThrowUtils.throwIf(
                 jobs.putIfAbsent(id, job) != null, ErrorCode.OPERATION_ERROR, "该应用正在生成，请先停止");
         final String request;
@@ -129,6 +133,17 @@ public class AppGenerationService {
                     app.getCodeGenType(),
                     mode);
             onStarted.run();
+            if (isCacheableCreate(mode, message, app)
+                    && aiResponseCache != null) {
+                Map<String, String> cached =
+                        aiResponseCache.findGeneration(app.getCodeGenType(), message);
+                if (cached != null && !cached.isEmpty()) {
+                    workspace.complete(id, job.token, cached, message);
+                    jobs.remove(id, job);
+                    log.info("复用 AI 生成结果 appId={}, codeGenType={}", id, app.getCodeGenType());
+                    return Flux.just("已复用相同需求的历史生成结果，可查看右侧预览。");
+                }
+            }
             if ("vue_project".equals(app.getCodeGenType()))
                 job.project =
                         new ProjectTask(
@@ -187,14 +202,27 @@ public class AppGenerationService {
 
     private Mono<String> finish(App app, String message, Job job) {
         if (job.stopped.get()) return Mono.error(new GenerationStoppedException());
-        workspace.complete(
-                app.getId(),
-                job.token,
+        Map<String, String> files =
                 job.project == null
                         ? parse(job.code.toString(), app.getCodeGenType())
-                        : job.project.result(),
-                message);
+                        : job.project.result();
+        workspace.complete(app.getId(), job.token, files, message);
+        if (isCacheableCreate(job.mode, message, app) && aiResponseCache != null) {
+            try {
+                aiResponseCache.putGeneration(app.getCodeGenType(), message, files);
+            } catch (RuntimeException error) {
+                // 缓存失败不能影响已经完成的生成。
+                log.warn("写入 AI 生成结果缓存失败 appId={}", app.getId(), error);
+            }
+        }
         return Mono.empty();
+    }
+
+    /** 只复用“从零创建且需求就是应用初始 prompt”的完整结果，避免错误复用修改上下文。 */
+    private static boolean isCacheableCreate(GenerationMode mode, String message, App app) {
+        return mode == GenerationMode.CREATE
+                && message != null
+                && Objects.equals(message, app.getInitPrompt());
     }
 
     private static boolean isConnectFailure(Throwable error) {

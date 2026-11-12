@@ -255,7 +255,7 @@ public class AppController {
                                                         SseEmitter.event()
                                                                 .name("progress")
                                                                 .data(
-                                                                        JSONUtil.toJsonStr(event.toMap()),
+                                                                        JSONUtil.toJsonStr(event.toSseMap()),
                                                                         MediaType
                                                                                 .APPLICATION_JSON));
                                             } catch (Exception closed) {
@@ -269,7 +269,7 @@ public class AppController {
                                                         SseEmitter.event()
                                                                 .name("file")
                                                                 .data(
-                                                                        JSONUtil.toJsonStr(event.toMap()),
+                                                                        JSONUtil.toJsonStr(event.toSseMap()),
                                                                         MediaType
                                                                                 .APPLICATION_JSON));
                                             } catch (Exception closed) {
@@ -316,8 +316,8 @@ public class AppController {
                                                                 guardrail != null
                                                                         ? guardrail
                                                                         : Map.of(
-                                                                                "code", code,
-                                                                                "message", text)),
+                                                                                "c", code,
+                                                                                "m", text)),
                                                         MediaType.APPLICATION_JSON));
                                 if (guardrail != null)
                                     emitter.send(SseEmitter.event().name("done").data("{}"));
@@ -338,7 +338,7 @@ public class AppController {
                                                 .name("done")
                                                 .data(
                                                         JSONUtil.toJsonStr(
-                                                                Map.of("version", version)),
+                                                                Map.of("v", version)),
                                                         MediaType.APPLICATION_JSON));
                             } catch (Exception closed) {
                                 /* 客户端已经断开。 */

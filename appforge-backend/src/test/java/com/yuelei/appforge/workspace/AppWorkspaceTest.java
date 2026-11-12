@@ -440,6 +440,36 @@ class AppWorkspaceTest {
     }
 
     @Test
+    void createGenerationReusesCachedFilesWithoutCallingModel() {
+        jdbc.update(
+                "UPDATE app SET initPrompt=?, codeGenType='html' WHERE id=?",
+                "生成一个登录页",
+                id);
+        AppGenerationService gen =
+                generation(Flux.error(new IllegalStateException("缓存命中时不应调用模型")));
+        AiResponseCacheService cache =
+                new AiResponseCacheService() {
+                    @Override
+                    public Map<String, String> findGeneration(String type, String prompt) {
+                        assertEquals("html", type);
+                        assertEquals("生成一个登录页", prompt);
+                        return Map.of("index.html", "<h1>缓存页面</h1>");
+                    }
+                };
+        ReflectionTestUtils.setField(gen, "aiResponseCache", cache);
+
+        List<String> chunks =
+                gen.generate(workspace.requireApp(id), "生成一个登录页")
+                        .collectList()
+                        .block(Duration.ofSeconds(5));
+
+        assertEquals(List.of("已复用相同需求的历史生成结果，可查看右侧预览。"), chunks);
+        assertEquals(1, workspace.requireApp(id).getCurrentVersion());
+        assertEquals("SUCCEEDED", workspace.requireApp(id).getGenerationStatus());
+        assertEquals("<h1>缓存页面</h1>", workspace.files(id, 1).get("index.html"));
+    }
+
+    @Test
     void stoppingCancelsUpstreamAndDoesNotSavePartialCode() throws Exception {
         AtomicBoolean cancelled = new AtomicBoolean();
         CountDownLatch started = new CountDownLatch(1), ended = new CountDownLatch(1);

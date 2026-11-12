@@ -17,4 +17,15 @@ public record GenerationProgress(
                 "message",
                 message);
     }
+
+    /** SSE 紧凑字段，减少每次工具调用的 JSON 体积；前端做兼容解析。 */
+    public java.util.Map<String, String> toSseMap() {
+        java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+        result.put("i", id);
+        result.put("o", operation);
+        result.put("p", java.util.Objects.toString(path, ""));
+        result.put("s", state);
+        result.put("m", message);
+        return result;
+    }
 }

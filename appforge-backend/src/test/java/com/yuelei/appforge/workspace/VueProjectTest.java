@@ -706,12 +706,12 @@ class VueProjectTest {
                         .getResponse()
                         .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         assertTrue(body.contains("event:progress"));
-        assertTrue(body.contains("\"operation\":\"write_file\""));
-        assertTrue(body.contains("\"path\":\"src/App.vue\""));
+        assertTrue(body.contains("\"o\":\"write_file\""));
+        assertTrue(body.contains("\"p\":\"src/App.vue\""));
         int dataStart = body.indexOf("data:", body.indexOf("event:progress")) + 5;
         String payload = body.substring(dataStart).lines().findFirst().orElseThrow();
         assertEquals(
-                Set.of("id", "operation", "path", "state", "message"),
+                Set.of("i", "o", "p", "s", "m"),
                 JSONUtil.parseObj(payload).keySet());
         assertTrue(body.contains("event:done"));
     }

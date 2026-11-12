@@ -2,8 +2,9 @@
 export function streamErrorMessage(value: unknown, fallback: string): string {
   if (!value || typeof value !== 'object') return fallback
   const data = value as Record<string, unknown>
+  const rawMessage = typeof data.message === 'string' ? data.message : data.m
   const message =
-    typeof data.message === 'string' && data.message.trim() ? data.message.slice(0, 300) : fallback
+    typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage.slice(0, 300) : fallback
   if (
     data.guardrail !== true ||
     typeof data.requestId !== 'string' ||

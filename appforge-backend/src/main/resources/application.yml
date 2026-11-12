@@ -29,6 +29,11 @@ spring:
 
 server:
   port: 8123
+  compression:
+    enabled: true
+    # SSE 流式响应不启用 gzip，避免压缩缓冲影响逐字输出；SSE 侧通过紧凑字段减体积。
+    mime-types: application/json,text/html,text/plain,text/css,application/javascript
+    min-response-size: 1024
   servlet:
     context-path: /api
     # cookie 30 天过期
@@ -56,6 +61,7 @@ langchain4j:
       base-url: https://api.deepseek.com
       api-key: sk-08fffb88ea1942b8b1b0559e1da77838
       model-name: deepseek-flash
+      max-retries: 3
       log-requests: true
       log-responses: true
       reasoning-effort: none

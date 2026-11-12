@@ -94,3 +94,7 @@ git commit -m "refactor: run backend directly from its source root"
 | GET | `/api/file/content/{id}` | 读取本人附件（本地回退时） |
 | POST | `/api/app/chat/request` | 换取一次性 SSE ticket |
 | GET | `/api/app/chat/gen/code?requestId=` | 生成 SSE（`progress/file/done`） |
+
+## 成本优化
+
+AI 路由与创建结果缓存、SSE 短字段、`AppVO` 空字段省略和普通 API gzip 已接入，细节与边界见 [成本优化说明](docs/12-cost-optimization.md)。缓存依赖现有 Redis，不需要新增数据库表。

@@ -36,7 +36,7 @@ public class AiHttpClientConfig {
                 .logRequests(true)
                 .logResponses(true)
                 .timeout(Duration.ofSeconds(90))
-                .maxRetries(2)
+                .maxRetries(3)
                 .build();
     }
 }

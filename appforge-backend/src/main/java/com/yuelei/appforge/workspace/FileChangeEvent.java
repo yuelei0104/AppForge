@@ -21,4 +21,14 @@ public record FileChangeEvent(
         result.put("truncated", truncated);
         return result;
     }
+
+    /** SSE 紧凑字段；content 为空时不发送该键，减少大文件事件体积。 */
+    public Map<String, Object> toSseMap() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("p", path);
+        result.put("o", operation == null ? null : operation.name().substring(0, 1));
+        if (content != null) result.put("c", content);
+        if (truncated) result.put("t", true);
+        return result;
+    }
 }

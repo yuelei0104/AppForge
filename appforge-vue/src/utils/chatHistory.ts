@@ -8,20 +8,26 @@ export interface ToolProgress {
 
 export function updateProgress(current: ToolProgress[], value: unknown): ToolProgress[] {
   if (!value || typeof value !== 'object') return current
-  const item = value as Partial<ToolProgress>
+  const raw = value as Record<string, unknown>
+  const id = typeof raw.id === 'string' ? raw.id : raw.i
+  const operation = typeof raw.operation === 'string' ? raw.operation : raw.o
+  const path = typeof raw.path === 'string' ? raw.path : raw.p
+  const state = typeof raw.state === 'string' ? raw.state : raw.s
+  const progressMessage = typeof raw.message === 'string' ? raw.message : raw.m
   if (
-    typeof item.id !== 'string' ||
-    typeof item.operation !== 'string' ||
-    typeof item.path !== 'string' ||
-    typeof item.message !== 'string' ||
-    !['RUNNING', 'SUCCEEDED', 'FAILED'].includes(item.state || '')
+    typeof id !== 'string' ||
+    typeof operation !== 'string' ||
+    typeof path !== 'string' ||
+    typeof progressMessage !== 'string' ||
+    typeof state !== 'string' ||
+    !['RUNNING', 'SUCCEEDED', 'FAILED'].includes(state || '')
   )
     return current
   if (
-    !item.id ||
-    item.id.length > 64 ||
-    item.path.length > 160 ||
-    item.message.length > 200 ||
+    !id ||
+    id.length > 64 ||
+    path.length > 160 ||
+    progressMessage.length > 200 ||
     ![
       'read_directory',
       'read_file',
@@ -31,17 +37,17 @@ export function updateProgress(current: ToolProgress[], value: unknown): ToolPro
       'prepare',
       'build',
       'guardrail',
-    ].includes(item.operation)
+    ].includes(operation)
   )
     return current
   const safe: ToolProgress = {
-    id: item.id,
-    operation: item.operation,
-    path: item.path,
-    state: item.state as ToolProgress['state'],
-    message: item.message,
+    id,
+    operation,
+    path,
+    state: state as ToolProgress['state'],
+    message: progressMessage,
   }
-  const found = current.findIndex((row) => row.id === item.id)
+  const found = current.findIndex((row) => row.id === id)
   if (found < 0) return [...current.slice(-199), safe]
   return current.map((row, index) => (index === found ? safe : row))
 }
