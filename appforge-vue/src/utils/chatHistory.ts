@@ -30,6 +30,7 @@ export function updateProgress(current: ToolProgress[], value: unknown): ToolPro
       'delete_file',
       'prepare',
       'build',
+      'guardrail',
     ].includes(item.operation)
   )
     return current

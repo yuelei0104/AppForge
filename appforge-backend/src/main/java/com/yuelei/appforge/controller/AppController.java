@@ -3,8 +3,9 @@ package com.yuelei.appforge.controller;
 import cn.hutool.json.JSONUtil;
 
 import com.mybatisflex.core.paginate.Page;
-import com.yuelei.appforge.annotation.AuthCheck;
+import com.yuelei.appforge.ai.guardrail.GuardrailErrors;
 import com.yuelei.appforge.ai.guardrail.PromptSafetyInputGuardrail;
+import com.yuelei.appforge.annotation.AuthCheck;
 import com.yuelei.appforge.common.*;
 import com.yuelei.appforge.constant.AppConstant;
 import com.yuelei.appforge.constant.UserConstant;
@@ -21,8 +22,8 @@ import com.yuelei.appforge.workspace.*;
 
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-
 import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -44,7 +45,10 @@ public class AppController {
     @Resource private UserService userService;
     @Resource private AppWorkspaceService workspace;
     @Resource private ChatTicketService chatTicketService;
-    @Resource private PromptSafetyInputGuardrail promptSafetyInputGuardrail;
+
+    @Resource
+    private PromptSafetyInputGuardrail promptSafetyInputGuardrail =
+            new PromptSafetyInputGuardrail();
 
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
@@ -210,8 +214,9 @@ public class AppController {
         final String finalMessage = message;
         final List<Long> finalAttachmentIds = attachmentIds;
         final String finalElement = element;
-        // 在建立 SSE 连接前拦截提示词注入，失败由 GlobalExceptionHandler 返回 business-error。
-        promptSafetyInputGuardrail.ensureSafe(finalMessage);
+        // Only shape validation runs here; owned attachments and semantic review are checked
+        // together in the application service before any generation/history side effects.
+        promptSafetyInputGuardrail.checkShape(finalMessage, loginUser.getId(), requestAppId);
         SseEmitter emitter =
                 new SseEmitter(0L) {
                     @Override
@@ -296,16 +301,26 @@ public class AppController {
                                             ? business.getCode()
                                             : ErrorCode.SYSTEM_ERROR.getCode();
                             String text = stopped ? "生成已停止" : AppGenerationService.safeError(error);
+                            var guardrail = GuardrailErrors.details(error);
                             try {
                                 emitter.send(
                                         SseEmitter.event()
-                                                .name(stopped ? "stopped" : "generation-error")
+                                                .name(
+                                                        guardrail != null
+                                                                ? "business-error"
+                                                                : stopped
+                                                                        ? "stopped"
+                                                                        : "generation-error")
                                                 .data(
                                                         JSONUtil.toJsonStr(
-                                                                Map.of(
-                                                                        "code", code, "message",
-                                                                        text)),
+                                                                guardrail != null
+                                                                        ? guardrail
+                                                                        : Map.of(
+                                                                                "code", code,
+                                                                                "message", text)),
                                                         MediaType.APPLICATION_JSON));
+                                if (guardrail != null)
+                                    emitter.send(SseEmitter.event().name("done").data("{}"));
                             } catch (Exception closed) {
                                 /* 客户端已经断开。 */
                             }
