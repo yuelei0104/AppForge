@@ -1,0 +1,56 @@
+:root {
+  --forge-accent: #6654d9;
+  --forge-accent-soft: #f0edff;
+  --forge-text: #242336;
+  --forge-muted: #737386;
+  --forge-border: #eae9f1;
+  --forge-surface: #fff;
+  --forge-background: #f8f9fc;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  color: var(--forge-text);
+  background: var(--forge-background);
+}
+
+body {
+  margin: 0;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button:focus-visible,
+a:focus-visible,
+[tabindex='0']:focus-visible {
+  outline: 3px solid #b0a6f1;
+  outline-offset: 3px;
+}
+html {
+  scroll-padding-top: 88px;
+}
+::selection {
+  background: #e7e1ff;
+  color: #352570;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

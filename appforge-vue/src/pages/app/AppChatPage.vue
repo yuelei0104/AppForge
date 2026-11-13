@@ -20,6 +20,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   ArrowLeftOutlined,
+  DesktopOutlined,
+  MobileOutlined,
+  ReloadOutlined,
+  MoreOutlined,
+  MenuUnfoldOutlined,
+  CheckCircleOutlined,
+  LoadingOutlined,
   CloudUploadOutlined,
   DownOutlined,
   EditOutlined,
@@ -84,6 +91,84 @@ const previewReady = ref(false)
 const isEditMode = ref(false)
 const selectedElementInfo = ref<ElementInfo | null>(null)
 const activePanel = ref<'preview' | 'code'>('preview')
+// 仅控制视图；预览、代码和生成仍使用现有接口与 SSE 事件。
+const previewDevice = ref<'desktop' | 'mobile'>('desktop')
+const mobilePane = ref<'chat' | 'preview'>('chat')
+const chatCollapsed = ref(false)
+const chatWidth = ref(38)
+const workspaceBody = ref<HTMLElement>()
+const isResizing = ref(false)
+function startResize(event: PointerEvent) {
+  if (event.button !== 0) return
+  event.preventDefault()
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  isResizing.value = true
+}
+function resizeWorkspace(event: PointerEvent) {
+  if (!isResizing.value || !workspaceBody.value) return
+  const rect = workspaceBody.value.getBoundingClientRect()
+  chatWidth.value = Math.min(58, Math.max(28, ((event.clientX - rect.left) / rect.width) * 100))
+}
+function stopResize() {
+  isResizing.value = false
+}
+function resizeWithKeyboard(event: KeyboardEvent) {
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    chatWidth.value = Math.min(
+      58,
+      Math.max(28, chatWidth.value + (event.key === 'ArrowLeft' ? -2 : 2)),
+    )
+  } else if (event.key === 'Home') {
+    event.preventDefault()
+    chatWidth.value = 38
+  }
+}
+function refreshPreview() {
+  if (!previewVisible.value) return
+  previewUrl.value = previewAddress(true)
+  previewKey.value += 1
+}
+const latestUserMessage = computed(() =>
+  [...messages.value].reverse().find((item) => item.role === 'user'),
+)
+function restoreLastPrompt() {
+  if (!isOwner.value || isGenerating.value || !historyLoaded.value || historyLoading.value) return
+  if (latestUserMessage.value) input.value = latestUserMessage.value.content
+  mobilePane.value = 'chat'
+  chatCollapsed.value = false
+}
+const generationSummary = computed(() => {
+  if (appLoading.value) return '正在加载应用信息'
+  if (deployLoading.value) return '正在发布应用'
+  if (!isGenerating.value) {
+    if (app.value?.generationStatus === 'FAILED')
+      return app.value?.currentVersion
+        ? '生成未完成，已有版本仍可查看'
+        : '生成未完成，请调整需求后重试'
+    if (app.value?.generationStatus === 'STOPPED') return '已停止生成，不完整的修改未保存'
+    if (app.value?.currentVersion) return `已保存版本 v${app.value.currentVersion}`
+    return '描述想法，开始你的第一次创作'
+  }
+  const latest = [...messages.value].reverse().find((item) => item.role === 'ai')
+  const progress = latest?.status === 'streaming' ? latest.progress : undefined
+  const running = [...(progress || [])].reverse().find((item) => item.state === 'RUNNING')
+  const labels: Record<string, string> = {
+    read_directory: '正在查看项目结构',
+    read_file: '正在读取文件',
+    write_file: '正在写入文件',
+    modify_file: '正在修改文件',
+    delete_file: '正在整理文件',
+    prepare: '正在准备构建环境',
+    build: '正在构建网站',
+    guardrail: '正在进行安全检查',
+  }
+  return running
+    ? labels[running.operation] || '正在生成应用'
+    : streaming.value
+      ? 'AI 正在生成，请稍候'
+      : '生成任务进行中，正在同步状态'
+})
 const liveFiles = ref<Record<string, string>>({})
 const deletedFiles = ref<Record<string, boolean>>({})
 const truncatedFiles = ref<Record<string, boolean>>({})
@@ -716,7 +801,8 @@ async function sendMessage(rawMessage: string) {
     elementContext = '选中元素信息：'
     if (element.pagePath) elementContext += `\n- 页面路径: ${element.pagePath}`
     elementContext += `\n- 标签: ${element.tagName.toLowerCase()}\n- 选择器: ${element.selector}`
-    if (element.textContent) elementContext += `\n- 当前内容: ${element.textContent.substring(0, 100)}`
+    if (element.textContent)
+      elementContext += `\n- 当前内容: ${element.textContent.substring(0, 100)}`
   }
   if (content.length + elementContext.length > 2000) {
     message.warning('消息与选中元素信息合计最多 2000 字，请缩短修改要求或重新选择更具体的元素')
@@ -844,6 +930,10 @@ async function loadApp() {
   input.value = ''
   pendingFiles.value = []
   activePanel.value = 'preview'
+  previewDevice.value = 'desktop'
+  mobilePane.value = 'chat'
+  chatCollapsed.value = false
+  isResizing.value = false
   liveFiles.value = {}
   deletedFiles.value = {}
   truncatedFiles.value = {}
@@ -1017,12 +1107,26 @@ onBeforeUnmount(() => {
   <div class="app-chat-page">
     <div class="app-chat-page__topbar">
       <div class="app-chat-page__topbar-left">
-        <a-button type="text" class="app-chat-page__back" @click="router.push('/')">
+        <a-button
+          type="text"
+          class="app-chat-page__back"
+          aria-label="返回创作首页"
+          @click="router.push('/')"
+        >
           <template #icon>
             <ArrowLeftOutlined />
           </template>
         </a-button>
 
+        <a-tooltip :title="chatCollapsed ? '展开对话' : '收起对话'"
+          ><a-button
+            class="workspace-collapse"
+            type="text"
+            :aria-label="chatCollapsed ? '展开对话' : '收起对话'"
+            :aria-expanded="!chatCollapsed"
+            @click="chatCollapsed = !chatCollapsed"
+            ><MenuUnfoldOutlined v-if="chatCollapsed" /><MenuFoldOutlined v-else /></a-button
+        ></a-tooltip>
         <a-dropdown :trigger="['click']">
           <button type="button" class="app-chat-page__app-name">
             <span>{{ appName }}</span>
@@ -1088,25 +1192,38 @@ onBeforeUnmount(() => {
         <a-button
           v-if="isOwner"
           :loading="downloadingSource"
-          :disabled="!app?.currentVersion"
+          :disabled="!app?.currentVersion || isGenerating || deleting || deployLoading"
           @click="downloadSource"
         >
           <template #icon><DownloadOutlined /></template>
-          下载代码
+          {{ app?.codeGenType === 'vue_project' ? '下载工程' : '下载源码' }}
         </a-button>
-        <a-button v-if="canManage" :loading="exporting" @click="handleExport"
-          ><template #icon><DownloadOutlined /></template>导出对话</a-button
+        <a-button v-if="canManage" class="workspace-history" @click="historyOpen = true"
+          ><HistoryOutlined />版本历史</a-button
         >
-        <a-button v-if="canManage" @click="openMemory"
-          ><template #icon><BulbOutlined /></template>智能记忆</a-button
-        >
-        <a-button v-if="canManage" @click="historyOpen = true"
-          ><template #icon><HistoryOutlined /></template>版本历史</a-button
-        >
-        <a-button :disabled="!app || appLoading" @click="detailsOpen = true">
-          <template #icon><InfoCircleOutlined /></template>
-          应用详情
-        </a-button>
+        <a-dropdown :trigger="['click']" placement="bottomRight">
+          <a-button aria-label="更多应用操作"><MoreOutlined />更多</a-button>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item key="detail" :disabled="!app || appLoading" @click="detailsOpen = true"
+                ><InfoCircleOutlined /> 应用详情</a-menu-item
+              >
+              <a-menu-item v-if="canManage" key="memory" @click="openMemory"
+                ><BulbOutlined /> 智能记忆</a-menu-item
+              >
+              <a-menu-item v-if="canManage" key="export" :disabled="exporting" @click="handleExport"
+                ><DownloadOutlined /> {{ exporting ? '正在导出' : '导出对话' }}</a-menu-item
+              >
+              <a-menu-item
+                v-if="canManage"
+                key="history"
+                class="workspace-history-menu"
+                @click="historyOpen = true"
+                ><HistoryOutlined /> 版本历史</a-menu-item
+              >
+            </a-menu>
+          </template>
+        </a-dropdown>
         <a-button
           v-if="isOwner"
           type="primary"
@@ -1115,11 +1232,52 @@ onBeforeUnmount(() => {
           @click="handleDeploy"
         >
           <template #icon><CloudUploadOutlined /></template>
-          部署
+          {{ app?.deploymentStatus === 'ONLINE' ? '更新发布' : '发布应用' }}
         </a-button>
       </div>
     </div>
 
+    <div
+      class="workspace-status"
+      :class="{
+        'workspace-status--busy': isGenerating || deployLoading,
+        'workspace-status--error': app?.generationStatus === 'FAILED',
+      }"
+      role="status"
+      aria-live="polite"
+    >
+      <LoadingOutlined v-if="isGenerating || deployLoading" spin /><CheckCircleOutlined
+        v-else-if="app?.currentVersion && app?.generationStatus !== 'FAILED'"
+      /><InfoCircleOutlined v-else /> <span>{{ generationSummary }}</span
+      ><span v-if="previewVisible && isGenerating" class="workspace-status__hint"
+        >右侧保留上次生成的预览</span
+      >
+      <a-button
+        v-if="
+          isOwner &&
+          !isGenerating &&
+          latestUserMessage &&
+          ['FAILED', 'STOPPED'].includes(app?.generationStatus || '')
+        "
+        type="link"
+        size="small"
+        :disabled="!historyLoaded || historyLoading"
+        @click="restoreLastPrompt"
+        >编辑上次需求</a-button
+      >
+    </div>
+    <nav class="workspace-mobile-nav" aria-label="切换工作区">
+      <button type="button" :aria-pressed="mobilePane === 'chat'" @click="mobilePane = 'chat'">
+        对话与需求
+      </button>
+      <button
+        type="button"
+        :aria-pressed="mobilePane === 'preview'"
+        @click="mobilePane = 'preview'"
+      >
+        预览与代码
+      </button>
+    </nav>
     <a-alert
       v-if="app?.generationError && ['FAILED', 'STOPPED'].includes(app.generationStatus || '')"
       :message="app.generationError"
@@ -1127,8 +1285,24 @@ onBeforeUnmount(() => {
       show-icon
       class="app-chat-page__status"
     />
-    <div class="app-chat-page__body">
-      <section class="chat-panel">
+    <div
+      ref="workspaceBody"
+      class="app-chat-page__body"
+      :class="{ 'workspace--preview': mobilePane === 'preview', 'workspace--resizing': isResizing }"
+      :style="{ '--chat-width': `${chatWidth}%` }"
+    >
+      <section
+        id="workspace-chat"
+        class="chat-panel"
+        :class="{ 'chat-panel--collapsed': chatCollapsed }"
+        aria-label="AI 创作对话"
+      >
+        <div class="chat-panel__heading">
+          <span><img :src="aiAvatarUrl" alt="" />创作助手</span
+          ><small>{{
+            appLoading ? '正在加载应用' : isOwner ? '一起完善你的想法' : '作品只读'
+          }}</small>
+        </div>
         <div ref="messagesRef" class="chat-panel__messages" @scroll="handleMessagesScroll">
           <div v-if="hasMoreHistory && historyLoaded" class="chat-panel__history">
             <a-button
@@ -1273,7 +1447,12 @@ onBeforeUnmount(() => {
               <img v-if="file.kind === 'image'" :src="file.url" :alt="file.name" />
               <FileTextOutlined v-else />
               <span class="chat-panel__attachment-name">{{ file.name }}</span>
-              <button type="button" class="chat-panel__attachment-remove" @click="removePending(file.id)">
+              <button
+                type="button"
+                class="chat-panel__attachment-remove"
+                :aria-label="`移除附件：${file.name}`"
+                @click="removePending(file.id)"
+              >
                 <CloseOutlined />
               </button>
             </div>
@@ -1282,6 +1461,7 @@ onBeforeUnmount(() => {
           <a-tooltip :title="readOnlyHint">
             <div>
               <a-textarea
+                aria-label="向 AI 描述创建或修改需求"
                 v-model:value="input"
                 :auto-size="{ minRows: 2, maxRows: 6 }"
                 :maxlength="2000"
@@ -1298,7 +1478,7 @@ onBeforeUnmount(() => {
                   readOnlyHint ||
                   (selectedElementInfo
                     ? `正在编辑 ${selectedElementInfo.tagName.toLowerCase()} 元素，描述您想要的修改...`
-                    : '请描述你想生成的网站，越详细效果越好哦')
+                    : '描述想要调整的布局、内容或功能……')
                 "
                 @keydown="handleComposerKeydown"
               />
@@ -1326,14 +1506,6 @@ onBeforeUnmount(() => {
             <span class="chat-panel__composer-hint">{{
               readOnlyHint || 'Ctrl / ⌘ + Enter 发送'
             }}</span>
-            <a-button
-              v-if="isOwner && previewVisible && !isGenerating"
-              :danger="isEditMode"
-              :disabled="!previewReady || deployLoading || deleting"
-              @click="toggleEditMode"
-            >
-              <template #icon><EditOutlined /></template>{{ isEditMode ? '退出编辑' : '编辑模式' }}
-            </a-button>
             <a-button v-if="isGenerating && isOwner" danger :loading="stopping" @click="handleStop"
               ><template #icon><StopOutlined /></template>停止生成</a-button
             >
@@ -1362,17 +1534,38 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section class="preview-panel">
+      <div
+        v-show="!chatCollapsed"
+        class="workspace-splitter"
+        role="separator"
+        aria-label="调整对话与预览宽度"
+        aria-orientation="vertical"
+        aria-controls="workspace-chat workspace-preview"
+        :aria-valuenow="Math.round(chatWidth)"
+        :aria-valuemin="28"
+        :aria-valuemax="58"
+        tabindex="0"
+        @pointerdown="startResize"
+        @pointermove="resizeWorkspace"
+        @pointerup="stopResize"
+        @pointercancel="stopResize"
+        @lostpointercapture="stopResize"
+        @keydown="resizeWithKeyboard"
+      >
+        <span />
+      </div>
+      <section id="workspace-preview" class="preview-panel" aria-label="应用预览与代码">
         <div class="preview-panel__header">
           <span class="preview-panel__title">
             <LinkOutlined />
-            生成效果
+            工作预览
           </span>
           <div class="preview-panel__tabs">
             <button
               type="button"
               class="preview-panel__tab"
               :class="{ 'preview-panel__tab--active': activePanel === 'preview' }"
+              :aria-pressed="activePanel === 'preview'"
               @click="activePanel = 'preview'"
             >
               <EyeOutlined />预览
@@ -1381,6 +1574,7 @@ onBeforeUnmount(() => {
               type="button"
               class="preview-panel__tab"
               :class="{ 'preview-panel__tab--active': activePanel === 'code' }"
+              :aria-pressed="activePanel === 'code'"
               :title="activePanel === 'code' ? '收起代码' : '展开代码'"
               @click="activePanel = activePanel === 'code' ? 'preview' : 'code'"
             >
@@ -1388,6 +1582,35 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <div v-if="activePanel === 'preview'" class="preview-panel__actions">
+            <div class="preview-device" aria-label="预览尺寸">
+              <button
+                type="button"
+                :aria-pressed="previewDevice === 'desktop'"
+                aria-label="桌面预览"
+                title="桌面预览"
+                @click="previewDevice = 'desktop'"
+              >
+                <DesktopOutlined />
+              </button>
+              <button
+                type="button"
+                :aria-pressed="previewDevice === 'mobile'"
+                aria-label="手机预览"
+                title="手机预览（390px）"
+                @click="previewDevice = 'mobile'"
+              >
+                <MobileOutlined />
+              </button>
+            </div>
+            <a-button
+              size="small"
+              type="text"
+              aria-label="刷新预览"
+              title="刷新预览"
+              :disabled="!previewVisible"
+              @click="refreshPreview"
+              ><ReloadOutlined
+            /></a-button>
             <a-button
               v-if="isOwner && previewVisible"
               size="small"
@@ -1405,26 +1628,43 @@ onBeforeUnmount(() => {
             </a-button>
           </div>
         </div>
-        <div class="preview-panel__body">
+        <div
+          class="preview-panel__body"
+          :class="{
+            'preview-panel__body--mobile': previewDevice === 'mobile' && activePanel === 'preview',
+          }"
+        >
           <template v-if="activePanel === 'preview'">
-            <iframe
-              v-if="previewVisible"
-              :key="previewKey"
-              ref="previewIframe"
-              class="preview-panel__iframe"
-              :src="previewUrl"
-              @load="onPreviewLoad"
-              title="应用预览"
-              sandbox="allow-forms allow-modals allow-scripts allow-same-origin"
-            />
+            <div v-if="previewVisible" class="preview-panel__viewport">
+              <iframe
+                v-if="previewVisible"
+                :key="previewKey"
+                ref="previewIframe"
+                class="preview-panel__iframe"
+                :src="previewUrl"
+                @load="onPreviewLoad"
+                title="应用预览"
+                sandbox="allow-forms allow-modals allow-scripts allow-same-origin"
+              />
+            </div>
             <div v-else class="preview-panel__empty">
-              <div class="preview-panel__empty-icon">⌘</div>
-              <p>完成对话后，生成的网站会展示在这里</p>
+              <div class="preview-panel__empty-icon"><DesktopOutlined /></div>
+              <h2>{{ isGenerating ? '你的想法，正在成形' : '你的应用将在这里呈现' }}</h2>
+              <p>
+                {{
+                  isGenerating
+                    ? '可以在左侧查看生成进度；完成后会自动加载预览。'
+                    : '在左侧描述需求，完成生成后即可查看和继续修改。'
+                }}
+              </p>
+              <div class="preview-panel__steps">
+                <span>01 描述需求</span><i /><span>02 生成应用</span><i /><span>03 预览发布</span>
+              </div>
             </div>
 
-            <div v-if="streaming && previewLoading" class="preview-panel__mask">
+            <div v-if="streaming && previewLoading && !previewVisible" class="preview-panel__mask">
               <a-spin />
-              <span>正在生成页面...</span>
+              <span>{{ generationSummary }}</span>
             </div>
           </template>
           <CodeWorkspace
@@ -1511,7 +1751,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 12px;
   min-height: 560px;
-  height: calc(100vh - 64px - 63px - 48px);
+  height: 100dvh;
+  padding: 14px;
+  background: #f4f5f9;
 }
 
 .app-chat-page__topbar {
@@ -1584,7 +1826,7 @@ onBeforeUnmount(() => {
 .app-chat-page__body {
   display: flex;
   flex: 1;
-  gap: 12px;
+  gap: 0;
   min-height: 0;
 }
 
@@ -1600,7 +1842,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-panel {
-  flex: 2;
+  flex: 0 0 var(--chat-width, 38%);
   min-width: 0;
 }
 
@@ -1609,7 +1851,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   padding: 16px;
   overflow-y: auto;
-  background: #fbfcfe;
+  background: #fff;
 }
 
 .chat-panel__loading {
@@ -1640,7 +1882,7 @@ onBeforeUnmount(() => {
   font-size: 18px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #4f7cff, #53c8d8);
+  background: var(--forge-accent);
   border-radius: 16px;
 }
 
@@ -1686,8 +1928,8 @@ onBeforeUnmount(() => {
 }
 
 .chat-message--user .chat-message__bubble {
-  color: #fff;
-  background: linear-gradient(135deg, #4f7cff, #5b8def);
+  color: #514573;
+  background: #f0ecfa;
   border: none;
   border-radius: 14px 4px 14px 14px;
 }
@@ -1703,7 +1945,7 @@ onBeforeUnmount(() => {
   height: 15px;
   margin-left: 2px;
   vertical-align: -2px;
-  background: #4f7cff;
+  background: var(--forge-accent);
   animation: blink 0.9s step-end infinite;
 }
 
@@ -1718,7 +1960,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-top: 5px;
   font-size: 11px;
-  color: #aab4c5;
+  color: #82798f;
 }
 
 .chat-panel__composer {
@@ -1749,11 +1991,11 @@ onBeforeUnmount(() => {
 .chat-panel__composer-hint {
   margin-right: auto;
   font-size: 11px;
-  color: #aab4c5;
+  color: #82798f;
 }
 
 .preview-panel {
-  flex: 3;
+  flex: 1;
   min-width: 0;
 }
 
@@ -1902,6 +2144,24 @@ onBeforeUnmount(() => {
   background: #f8fafc;
 }
 
+.preview-panel__viewport {
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+  background: #fff;
+  transition: width 0.2s;
+}
+.preview-panel__body--mobile {
+  padding: 14px 0;
+}
+.preview-panel__body--mobile .preview-panel__viewport {
+  width: min(390px, 100%);
+  border: 1px solid #ddd8e8;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 5px 20px #3424450d;
+}
+
 .preview-panel__iframe {
   width: 100%;
   height: 100%;
@@ -1918,50 +2178,315 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  color: #4f7cff;
+  color: var(--forge-accent);
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(2px);
 }
 
 @media (max-width: 991px) {
   .app-chat-page {
-    height: auto;
+    padding: 8px;
+    height: 100dvh;
+    min-height: 560px;
+    gap: 8px;
+  }
+  .app-chat-page__body {
     min-height: 0;
   }
-
-  .app-chat-page__body {
-    flex-direction: column;
+  .workspace-splitter,
+  .workspace-collapse {
+    display: none;
   }
-
-  .chat-panel {
-    flex: none;
-    height: 560px;
+  .chat-panel,
+  .chat-panel--collapsed {
+    flex: 1;
+    display: flex;
+    min-width: 0;
   }
-
   .preview-panel {
-    min-height: 520px;
+    display: none;
   }
-}
-
-@media (max-width: 767px) {
+  .workspace--preview .preview-panel {
+    display: flex;
+  }
+  .workspace--preview .chat-panel {
+    display: none;
+  }
+  .workspace-mobile-nav {
+    display: flex;
+    flex: none;
+    background: #eae8f1;
+    padding: 4px;
+    border-radius: 10px;
+    gap: 4px;
+  }
+  .workspace-mobile-nav button {
+    flex: 1;
+    padding: 8px;
+    color: #8c839c;
+    font-size: 12px;
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .workspace-mobile-nav button[aria-pressed='true'] {
+    color: var(--forge-accent);
+    background: #fff;
+    box-shadow: 0 1px 3px #2420300a;
+  }
+  .workspace-status__hint {
+    display: none;
+  }
+  .workspace-history {
+    display: none;
+  }
   .app-chat-page__topbar {
-    padding: 8px 10px;
+    gap: 8px;
+    padding: 10px;
   }
-
+  .app-chat-page__topbar-left {
+    gap: 5px;
+  }
   .app-chat-page__app-name {
-    max-width: 180px;
+    max-width: 170px;
     font-size: 14px;
   }
-
-  .chat-panel {
-    height: 500px;
+  .app-chat-page__topbar-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
-
-  .preview-panel {
-    min-height: 420px;
+  .preview-panel__title {
+    display: none;
+  }
+  .preview-panel__header {
+    padding: 10px;
+    gap: 6px;
+  }
+  .preview-panel__actions {
+    gap: 3px;
+  }
+  .chat-panel__composer-hint {
+    font-size: 10px;
+  }
+}
+@media (min-width: 992px) {
+  .chat-panel--collapsed {
+    display: none;
   }
 }
 .preview-panel__body :deep(.code-workspace) {
   height: 100%;
+}
+
+.workspace-mobile-nav {
+  display: none;
+}
+.workspace-status {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  min-height: 22px;
+  font-size: 11px;
+  color: #756c82;
+}
+.workspace-status--busy {
+  color: var(--forge-accent);
+}
+.workspace-status--error {
+  color: #b76459;
+}
+.workspace-status__hint {
+  margin-left: auto;
+  color: #9b94a5;
+}
+.workspace-status .ant-btn {
+  margin-left: auto;
+  font-size: 11px;
+}
+.workspace-splitter {
+  display: flex;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: 5px;
+}
+.workspace-splitter span {
+  width: 3px;
+  height: 30px;
+  background: #d6d1e0;
+  border-radius: 3px;
+}
+.workspace-splitter:hover span,
+.workspace--resizing .workspace-splitter span {
+  background: var(--forge-accent);
+}
+.workspace--resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.workspace--resizing iframe {
+  pointer-events: none;
+}
+.chat-panel__heading {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid #f1eef6;
+  color: #514861;
+}
+.chat-panel__heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.chat-panel__heading img {
+  width: 24px;
+  height: 24px;
+}
+.chat-panel__heading small {
+  color: #82798f;
+  font-size: 10px;
+}
+.app-chat-page__topbar {
+  border-color: var(--forge-border);
+  border-radius: 12px;
+  gap: 10px;
+}
+.app-chat-page__topbar-left {
+  flex: 1;
+}
+.app-chat-page__app-name {
+  background: transparent;
+  color: #393045;
+  font-size: 15px;
+  padding-left: 2px;
+}
+.app-chat-page__topbar-actions :deep(.ant-btn) {
+  font-size: 12px;
+}
+.app-chat-page__topbar-left :deep(.ant-tag) {
+  font-size: 10px;
+  border: 0;
+  color: #91849f;
+  background: #f5f2f9;
+}
+.preview-device {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: #f3f1f7;
+  border-radius: 7px;
+}
+.preview-device button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 25px;
+  padding: 0;
+  color: #a59bb4;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.preview-device button[aria-pressed='true'] {
+  color: var(--forge-accent);
+  background: #fff;
+  box-shadow: 0 1px 3px #24203014;
+}
+.preview-panel__empty h2 {
+  color: #665a78;
+  font-size: 18px;
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+.preview-panel__empty p {
+  max-width: 320px;
+  line-height: 1.8;
+  color: #82798f;
+  margin: 0;
+}
+.preview-panel__steps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  font-size: 10px;
+  color: #b8aec3;
+}
+.preview-panel__steps i {
+  width: 16px;
+  height: 1px;
+  background: #dbd5e3;
+}
+.preview-panel__empty-icon {
+  color: #9380bb;
+  background: #eee8f8;
+  box-shadow: 0 5px 20px #67518a08;
+}
+.preview-panel__mask {
+  inset: auto 16px 16px;
+  flex-direction: row;
+  padding: 12px;
+  color: var(--forge-accent);
+  background: #fffffff5;
+  border: 1px solid #ebe6f4;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.chat-panel__composer {
+  margin: 10px;
+  padding: 12px;
+  border: 1px solid #e8e2f1;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px #32224004;
+}
+.chat-panel__composer:focus-within {
+  border-color: #b7a5dc;
+}
+.chat-panel__composer :deep(textarea) {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.chat-message--ai .chat-message__bubble {
+  background: #fff;
+  box-shadow: none;
+  border-color: transparent;
+  padding: 3px 0;
+}
+.chat-message__meta {
+  color: #82798f;
+}
+@media (max-width: 991px) {
+  .workspace-mobile-nav {
+    display: flex;
+  }
+  .workspace-splitter,
+  .workspace-collapse {
+    display: none !important;
+  }
+  .workspace-status__hint {
+    display: none;
+  }
+  .app-chat-page__app-name {
+    max-width: 140px;
+  }
+  .workspace-status {
+    font-size: 10px;
+  }
+  .preview-panel__header {
+    flex-wrap: wrap;
+  }
 }
 </style>

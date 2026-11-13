@@ -19,7 +19,7 @@ const props = withDefaults(
     title?: string
   }>(),
   {
-    title: '岳蕾 AI 零代码应用生成平台',
+    title: 'AppForge',
   },
 )
 
@@ -44,6 +44,12 @@ const visibleItems = computed(() =>
     return checkAccess(loginUserStore.loginUser, needAccess)
   }),
 )
+
+const drawerItems = computed(() => [
+  ...visibleItems.value.slice(0, 1),
+  { key: '/#my-apps', label: '我的作品' },
+  ...visibleItems.value.slice(1),
+])
 
 /** 根据当前路由计算需要高亮的菜单项 */
 const selectedKeys = computed<string[]>(() => {
@@ -104,6 +110,7 @@ watch(
       <router-link to="/" class="global-header__brand" aria-label="返回首页">
         <img :src="logoUrl" alt="网站 logo" class="global-header__logo" />
         <span class="global-header__title">{{ title }}</span>
+        <span class="global-header__badge">AI 创作空间</span>
       </router-link>
 
       <a-menu
@@ -115,6 +122,9 @@ watch(
         @click="handleMenuClick"
       />
 
+      <router-link v-if="!isMobile" to="/#my-apps" class="global-header__shortcut"
+        >我的作品</router-link
+      >
       <div class="global-header__actions">
         <a-button
           v-if="isMobile"
@@ -159,7 +169,7 @@ watch(
     >
       <a-menu
         mode="inline"
-        :items="visibleItems"
+        :items="drawerItems"
         :selected-keys="selectedKeys"
         @click="handleDrawerMenuClick"
       />
@@ -175,7 +185,8 @@ watch(
   height: 64px;
   padding: 0 24px;
   line-height: normal;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
   border-bottom: 1px solid #f0f0f0;
 }
 
@@ -184,7 +195,7 @@ watch(
   align-items: center;
   gap: 24px;
   width: 100%;
-  max-width: 1280px;
+  max-width: 1360px;
   min-width: 0;
   height: 100%;
   margin: 0 auto;
@@ -210,7 +221,7 @@ watch(
 .global-header__title {
   min-width: 0;
   overflow: hidden;
-  font-size: 17px;
+  font-size: 22px;
   font-weight: 600;
   line-height: 24px;
   color: rgba(0, 0, 0, 0.88);
@@ -262,7 +273,27 @@ watch(
   white-space: nowrap;
 }
 
+.global-header__badge {
+  font-size: 11px;
+  color: var(--forge-accent);
+  background: var(--forge-accent-soft);
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.global-header__shortcut {
+  color: var(--forge-muted);
+  white-space: nowrap;
+  font-size: 14px;
+}
+.global-header__shortcut:hover {
+  color: var(--forge-accent);
+}
+
 @media (max-width: 767px) {
+  .global-header__badge {
+    display: none;
+  }
   .global-header {
     padding: 0 16px;
   }
