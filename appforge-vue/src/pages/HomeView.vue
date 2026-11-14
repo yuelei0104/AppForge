@@ -6,7 +6,18 @@ import { coverPending } from '@/utils/cover'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { ArrowUpOutlined, LoginOutlined } from '@ant-design/icons-vue'
+import {
+  ArrowUpOutlined,
+  LoginOutlined,
+  ArrowRightOutlined,
+  AppstoreOutlined,
+  UserOutlined,
+  GlobalOutlined,
+  BarChartOutlined,
+  ControlOutlined,
+  PlusOutlined,
+  ThunderboltOutlined,
+} from '@ant-design/icons-vue'
 import AppCard from '@/components/AppCard.vue'
 import { listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController'
 import { useLoginUserStore } from '@/stores/loginUser'
@@ -16,22 +27,34 @@ const loginUserStore = useLoginUserStore()
 
 const quickPrompts = [
   {
-    label: '个人博客',
+    label: '个人作品集',
+    description: '展示作品，讲述你的故事',
+    icon: UserOutlined,
+    tone: 'violet',
     prompt:
-      '帮我创建个人博客网站，采用简洁的浅色设计，首页展示个人简介、头像和最新文章。提供文章分类、标签筛选和关键词搜索，文章详情支持目录与代码展示。底部放置邮箱及社交链接，适配手机和电脑，并填充几篇示例文章。',
+      '帮我创建一个个人作品集网站，使用简洁、留白充足的设计。包含个人简介、技能介绍、项目作品与联系方式。项目卡片支持分类筛选，点击后展示项目详情，填充示例内容，适配手机和电脑。',
   },
   {
     label: '企业官网',
+    description: '为品牌建立专属空间',
+    icon: GlobalOutlined,
+    tone: 'blue',
     prompt:
       '帮我创建一家科技公司的官方网站，使用蓝紫色科技风格。包含品牌介绍、产品服务、客户案例、团队成员和联系表单。首页突出核心产品及咨询入口，导航点击后滚动到对应区块，配上真实感的示例文案，并适配移动端。',
   },
   {
-    label: '活动报名',
+    label: '管理后台',
+    description: '让日常管理井井有条',
+    icon: ControlOutlined,
+    tone: 'amber',
     prompt:
-      '帮我创建一场周末城市摄影活动的报名网站，使用温暖清新的配色。展示活动时间地点、行程安排、嘉宾介绍、费用和常见问题。报名表包含姓名、联系方式与人数，提交前校验必填项并显示报名成功提示，手机端也能方便填写。',
+      '帮我创建一个办公用品管理后台，包含侧边导航、库存概览、物品列表和领用记录。支持按名称搜索、分类筛选，使用弹窗新增和编辑物品。先使用示例数据演示完整交互，并适配手机和电脑。',
   },
   {
     label: '数据看板',
+    description: '让数据变得一目了然',
+    icon: BarChartOutlined,
+    tone: 'mint',
     prompt:
       '帮我创建一个电商运营数据看板，包含销售额、订单量、客单价与转化率指标，展示近七天趋势、商品排行和订单列表。支持日期筛选、订单状态筛选及关键词搜索，使用清晰的卡片布局和示例数据，适配桌面和手机浏览。',
   },
@@ -40,6 +63,15 @@ const quickPrompts = [
 const prompt = ref('')
 const generationMode = ref<GenerationMode>(CodeGenTypeEnum.VUE_PROJECT)
 const creating = ref(false)
+const promptInput = ref<{ focus: () => void }>()
+const myError = ref('')
+const goodError = ref('')
+const selectedScenario = computed(() => quickPrompts.find((item) => item.prompt === prompt.value))
+
+function focusPrompt() {
+  document.getElementById('create-app')?.scrollIntoView({ block: 'center' })
+  promptInput.value?.focus()
+}
 
 const myApps = ref<AppInfo[]>([])
 const myTotal = ref(0)
@@ -62,6 +94,7 @@ const isLoggedIn = computed(() => loginUserStore.isLoggedIn)
 
 function useQuickPrompt(text: string) {
   prompt.value = text
+  promptInput.value?.focus()
 }
 
 function goLogin() {
@@ -105,6 +138,7 @@ async function fetchMyApps() {
     return
   }
   myLoading.value = true
+  myError.value = ''
   try {
     const filters: AppFilters = {
       pageNum: myPage.value,
@@ -117,10 +151,10 @@ async function fetchMyApps() {
       myApps.value = res.data.data.records ?? []
       myTotal.value = Number(res.data.data.totalRow ?? 0)
     } else {
-      message.error(res.data.message || '获取我的应用失败')
+      myError.value = res.data.message || '获取我的作品失败'
     }
   } catch {
-    message.error('获取我的应用失败，请稍后重试')
+    myError.value = '暂时无法加载我的作品，请检查连接后重试'
   } finally {
     myLoading.value = false
   }
@@ -128,6 +162,7 @@ async function fetchMyApps() {
 
 async function fetchGoodApps() {
   goodLoading.value = true
+  goodError.value = ''
   try {
     const filters: AppFilters = {
       pageNum: goodPage.value,
@@ -145,10 +180,10 @@ async function fetchGoodApps() {
       goodApps.value = res.data.data.records ?? []
       goodTotal.value = Number(res.data.data.totalRow ?? 0)
     } else {
-      message.error(res.data.message || '获取精选应用失败')
+      goodError.value = res.data.message || '获取案例失败'
     }
   } catch {
-    message.error('获取精选应用失败，请稍后重试')
+    goodError.value = '暂时无法加载案例，请检查连接后重试'
   } finally {
     goodLoading.value = false
   }
@@ -220,101 +255,129 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="home-view">
-    <section class="hero">
+  <main class="home-view">
+    <section id="create-app" class="hero" aria-labelledby="creation-title">
       <div class="hero__content">
-        <div class="hero__eyebrow">APPFORGE · CREATE WITH AI</div>
-        <h1 class="hero__title">AI 应用生成平台</h1>
-        <p class="hero__subtitle">一句话轻松创建网站应用</p>
-
-        <div class="prompt-panel">
+        <div class="hero__eyebrow"><ThunderboltOutlined /> 从一个想法开始</div>
+        <h1 id="creation-title" class="hero__title">把想法，变成<span>可用的应用。</span></h1>
+        <p class="hero__subtitle">描述你的需求，让 AI 帮你构建。预览、修改、发布，都在这里。</p>
+        <div class="prompt-panel" :class="{ 'prompt-panel--busy': creating }">
           <a-textarea
+            ref="promptInput"
             v-model:value="prompt"
             class="prompt-panel__input"
-            :auto-size="{ minRows: 4, maxRows: 8 }"
+            aria-label="描述你想创建的应用"
+            :auto-size="{ minRows: 3, maxRows: 7 }"
             :maxlength="2000"
-            placeholder="帮我创建个人博客网站"
+            :disabled="creating"
+            placeholder="我想创建一个个人摄影网站，支持作品分类、图片展示和在线联系……"
             @keydown="handlePromptKeydown"
           />
           <div class="prompt-panel__footer">
             <div class="prompt-panel__mode">
+              <span v-if="selectedScenario" class="scenario-label"
+                ><component :is="selectedScenario.icon" />{{ selectedScenario.label }}</span
+              >
               <a-select
                 v-model:value="generationMode"
                 aria-label="生成模式"
                 :disabled="creating"
                 :options="generationModeOptions"
               />
-              <span class="prompt-panel__hint">描述越具体，生成效果越好</span>
             </div>
-            <a-button
-              type="primary"
-              shape="circle"
-              size="large"
-              :loading="creating"
-              aria-label="开始创建应用"
-              @click="handleCreate"
-            >
-              <template #icon>
-                <ArrowUpOutlined />
-              </template>
-            </a-button>
+            <div class="prompt-panel__submit">
+              <span class="prompt-panel__hint">{{
+                prompt.length ? `${prompt.length} / 2000` : 'Ctrl / ⌘ + Enter'
+              }}</span>
+              <a-button
+                type="primary"
+                size="large"
+                :loading="creating"
+                :disabled="!prompt.trim()"
+                aria-label="开始创建应用"
+                @click="handleCreate"
+              >
+                {{ creating ? '正在创建' : '开始创建' }}<ArrowUpOutlined v-if="!creating" />
+              </a-button>
+            </div>
           </div>
         </div>
-
-        <div class="quick-prompts">
-          <span class="quick-prompts__label">试试：</span>
+        <p class="hero__note">
+          {{
+            selectedScenario
+              ? '已填入示例需求，你可以修改后再开始创建'
+              : '还没有具体想法？从下面的场景获取灵感'
+          }}
+        </p>
+        <div class="scenario-grid" aria-label="创作场景">
           <button
             v-for="item in quickPrompts"
             :key="item.label"
             type="button"
-            class="quick-prompts__item"
+            class="scenario-card"
+            :class="[
+              `scenario-card--${item.tone}`,
+              { 'scenario-card--selected': selectedScenario?.label === item.label },
+            ]"
+            :aria-pressed="selectedScenario?.label === item.label"
+            :disabled="creating"
             @click="useQuickPrompt(item.prompt)"
           >
-            {{ item.label }}
+            <span class="scenario-card__icon"><component :is="item.icon" /></span>
+            <span class="scenario-card__copy"
+              ><strong>{{ item.label }}</strong
+              ><small>{{ item.description }}</small></span
+            >
+            <ArrowRightOutlined class="scenario-card__arrow" />
           </button>
         </div>
       </div>
     </section>
 
-    <section class="section">
+    <section id="my-apps" class="section section--mine" aria-labelledby="my-apps-title">
       <div class="section__head">
         <div>
-          <h2 class="section__title">我的作品</h2>
-          <p class="section__desc">你创建的每一个应用，都在这里</p>
+          <div class="section__eyebrow">YOUR WORKSPACE</div>
+          <h2 id="my-apps-title" class="section__title">
+            继续你的创作<span v-if="isLoggedIn" class="section__count">{{ myTotal }}</span>
+          </h2>
+          <p class="section__desc">从上次停下的地方，继续实现你的想法。</p>
         </div>
+        <a-button @click="focusPrompt"><PlusOutlined />创建新应用</a-button>
+      </div>
+      <div v-if="isLoggedIn" class="section__filters">
         <a-input-search
-          v-if="isLoggedIn"
           v-model:value="mySearch"
           class="section__search"
-          placeholder="搜索名称、描述或标签"
+          placeholder="搜索我的作品"
+          aria-label="搜索我的作品"
+          allow-clear
+          @search="handleMySearch"
+        />
+        <a-input-search
+          v-model:value="myTag"
+          class="tag-filter"
+          placeholder="按标签精确筛选"
+          aria-label="筛选我的作品标签"
           allow-clear
           @search="handleMySearch"
         />
       </div>
-
-      <a-input-search
-        v-if="isLoggedIn"
-        v-model:value="myTag"
-        class="tag-filter"
-        placeholder="按标签精确筛选"
-        allow-clear
-        @search="handleMySearch"
-      />
       <div v-if="!isLoggedIn" class="login-tip">
+        <span class="login-tip__icon"><AppstoreOutlined /></span>
         <div>
-          <h3 class="login-tip__title">登录后查看你的作品</h3>
-          <p class="login-tip__desc">用一句话创建属于自己的应用，并随时继续修改。</p>
+          <h3>你的下一个作品，从这里诞生</h3>
+          <p>登录后保存创作，随时回来继续编辑。</p>
         </div>
-        <a-button type="primary" @click="goLogin">
-          <template #icon>
-            <LoginOutlined />
-          </template>
-          去登录
-        </a-button>
+        <a-button type="primary" @click="goLogin"><LoginOutlined />登录开启创作</a-button>
       </div>
-
       <a-spin v-else :spinning="myLoading">
-        <div v-if="myApps.length" class="app-grid">
+        <a-alert v-if="myError" :message="myError" type="warning" show-icon
+          ><template #action
+            ><a-button size="small" @click="fetchMyApps">重新加载</a-button></template
+          ></a-alert
+        >
+        <div v-else-if="myApps.length" class="app-grid">
           <AppCard
             v-for="app in myApps"
             :key="String(app.id)"
@@ -324,9 +387,18 @@ onMounted(() => {
             @edit="editMyApp"
           />
         </div>
-        <a-empty v-else class="empty-state" description="还没有应用，先写一句提示词吧" />
+        <a-empty
+          v-else-if="!myLoading"
+          class="empty-state"
+          :description="
+            mySearch || myTag ? '没有找到符合条件的作品' : '还没有作品，先从一个想法开始吧'
+          "
+          ><a-button v-if="!mySearch && !myTag" @click="focusPrompt"
+            >创建第一个应用</a-button
+          ></a-empty
+        >
+        <div v-else class="loading-space" />
       </a-spin>
-
       <a-pagination
         v-if="myTotal > myPageSize"
         class="pagination"
@@ -338,45 +410,54 @@ onMounted(() => {
       />
     </section>
 
-    <section class="section section--featured">
+    <section id="discover" class="section section--featured" aria-labelledby="discover-title">
       <div class="section__head">
         <div>
-          <h2 class="section__title">{{ discovery === 'featured' ? '精选案例' : '公开应用' }}</h2>
-          <p class="section__desc">看看别人用一句话创造了什么</p>
+          <div class="section__eyebrow">MADE WITH APPFORGE</div>
+          <h2 id="discover-title" class="section__title">发现更多可能</h2>
+          <p class="section__desc">看看其他创作者，把怎样的想法变成了现实。</p>
         </div>
         <a-input-search
           v-model:value="goodSearch"
           class="section__search"
           placeholder="搜索名称、描述或标签"
+          aria-label="搜索案例"
           allow-clear
           @search="handleGoodSearch"
         />
       </div>
-
       <div class="discovery-filters">
-        <a-radio-group v-model:value="discovery" @change="handleGoodSearch">
-          <a-radio-button value="featured">精选案例</a-radio-button>
-          <a-radio-button value="public">全部公开应用</a-radio-button>
-        </a-radio-group>
+        <a-radio-group v-model:value="discovery" @change="handleGoodSearch"
+          ><a-radio-button value="featured">精选案例</a-radio-button
+          ><a-radio-button value="public">全部公开应用</a-radio-button></a-radio-group
+        >
         <a-input-search
           v-model:value="goodTag"
           class="tag-filter"
           placeholder="按标签精确筛选"
+          aria-label="筛选案例标签"
           allow-clear
           @search="handleGoodSearch"
         />
       </div>
       <a-spin :spinning="goodLoading">
-        <div v-if="goodApps.length" class="app-grid">
+        <a-alert v-if="goodError" :message="goodError" type="warning" show-icon
+          ><template #action
+            ><a-button size="small" @click="fetchGoodApps">重新加载</a-button></template
+          ></a-alert
+        >
+        <div v-else-if="goodApps.length" class="app-grid">
           <AppCard v-for="app in goodApps" :key="String(app.id)" :app="app" @open="openGoodApp" />
         </div>
         <a-empty
-          v-else
+          v-else-if="!goodLoading"
           class="empty-state"
-          :description="discovery === 'featured' ? '暂时还没有精选应用' : '没有符合条件的公开应用'"
+          :description="
+            discovery === 'featured' ? '暂时还没有符合条件的精选案例' : '没有符合条件的公开应用'
+          "
         />
+        <div v-else class="loading-space" />
       </a-spin>
-
       <a-pagination
         v-if="goodTotal > goodPageSize"
         class="pagination"
@@ -387,269 +468,398 @@ onMounted(() => {
         @change="handleGoodPageChange"
       />
     </section>
-  </div>
+  </main>
 </template>
 
 <style scoped>
-.prompt-panel__mode {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-.prompt-panel__mode .ant-select {
-  min-width: 146px;
-}
 .home-view {
-  min-height: calc(100vh - 64px);
-  padding-bottom: 32px;
-  background:
-    radial-gradient(ellipse at 10% 0%, rgba(170, 192, 255, 0.36), transparent 42%),
-    radial-gradient(ellipse at 92% 18%, rgba(176, 160, 248, 0.28), transparent 42%),
-    linear-gradient(155deg, #f0f5ff 0%, #f5f3ff 42%, #f8fbff 100%);
+  padding-bottom: 64px;
+  background: #fafbfd;
 }
-
 .hero {
-  padding: 68px 24px 36px;
+  position: relative;
+  padding: 64px 24px 46px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 20% 20%, #eeedff 0, transparent 50%),
+    radial-gradient(ellipse at 85% 70%, #e9f6f8 0, transparent 45%), linear-gradient(#fff, #fafbfd);
 }
-
 .hero__content {
   position: relative;
-  z-index: 1;
-  max-width: 820px;
+  max-width: 880px;
   margin: 0 auto;
   text-align: center;
 }
-
 .hero__eyebrow {
-  margin-bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7161ae;
   font-size: 12px;
-  font-weight: 700;
-  color: #7571ab;
-  letter-spacing: 3px;
+  padding: 6px 12px;
+  background: #ffffffb3;
+  border: 1px solid #e5e0fa;
+  border-radius: 30px;
 }
-
 .hero__title {
-  margin: 0;
-  font-size: 46px;
-  font-weight: 800;
-  line-height: 1.2;
-  color: #242943;
-  letter-spacing: 1px;
+  margin: 22px 0 14px;
+  color: #242336;
+  font-size: clamp(30px, 3.4vw, 48px);
+  font-weight: 750;
+  line-height: 1.4;
+  letter-spacing: -1.5px;
 }
-
+.hero__title span {
+  color: var(--forge-accent);
+}
 .hero__subtitle {
-  margin: 16px 0 30px;
-  font-size: 17px;
-  color: #727790;
+  margin: 0 0 32px;
+  color: var(--forge-muted);
+  font-size: 15px;
+  line-height: 1.8;
 }
-
 .prompt-panel {
-  padding: 16px 18px 12px;
+  padding: 22px 22px 16px;
   text-align: left;
-  background: rgba(255, 255, 255, 0.92);
-  border: none;
+  background: #fff;
+  border: 1px solid #e2dff1;
   border-radius: 20px;
-  box-shadow:
-    0 16px 48px rgba(85, 78, 163, 0.1),
-    0 0 0 1px rgba(145, 135, 200, 0.08);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px #4d418912;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
-
+.prompt-panel:focus-within {
+  border-color: #a398e2;
+  box-shadow:
+    0 12px 40px #4d418918,
+    0 0 0 3px #6654d90b;
+}
 .prompt-panel__input {
   padding: 0;
-  font-size: 15px;
+  font-size: 16px;
+  line-height: 1.8;
   background: transparent;
-  border: none;
+  border: 0;
   box-shadow: none;
   resize: none;
 }
-
 .prompt-panel__input:hover,
 .prompt-panel__input:focus {
-  border: none;
+  border: 0;
   box-shadow: none;
 }
-
-.prompt-panel__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
+.prompt-panel__input::placeholder {
+  color: #9a99a9;
 }
-
-.prompt-panel__hint {
-  font-size: 12px;
-  color: #98a2b3;
-}
-
-.quick-prompts {
+.prompt-panel__footer,
+.prompt-panel__mode,
+.prompt-panel__submit {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
   align-items: center;
-  justify-content: center;
-  margin-top: 22px;
+  gap: 10px;
 }
-
-.quick-prompts__label {
-  font-size: 13px;
-  color: #85849d;
+.prompt-panel__footer {
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
 }
-
-.quick-prompts__item {
-  padding: 7px 14px;
+.prompt-panel__mode .ant-select {
+  min-width: 150px;
+}
+.prompt-panel__hint {
+  color: #9291a3;
+  font-size: 11px;
+}
+.prompt-panel__submit .ant-btn {
   font-size: 13px;
-  color: #5c5a78;
+  height: 38px;
+  border-radius: 10px;
+}
+.scenario-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  background: var(--forge-accent-soft);
+  color: var(--forge-accent);
+  font-size: 12px;
+  border-radius: 7px;
+}
+.hero__note {
+  margin: 16px 0 22px;
+  color: #737083;
+  font-size: 12px;
+}
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.scenario-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 16px 12px;
+  background: #ffffffb3;
+  border: 1px solid #e9e8f0;
+  border-radius: 12px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 999px;
   transition:
-    background 0.2s,
-    transform 0.2s;
+    transform 0.2s,
+    border-color 0.2s;
 }
-
-.quick-prompts__item:hover {
-  background: #fff;
-  transform: translateY(-1px);
+.scenario-card:hover {
+  transform: translateY(-3px);
+  border-color: #c5bce8;
 }
-
+.scenario-card--selected {
+  border-color: var(--forge-accent);
+  background: #f5f2ff;
+}
+.scenario-card__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: #8064cc;
+  background: #f0eaff;
+  font-size: 18px;
+}
+.scenario-card--blue .scenario-card__icon {
+  color: #4e83c3;
+  background: #eaf2fd;
+}
+.scenario-card--amber .scenario-card__icon {
+  color: #ba8a4f;
+  background: #fbf1df;
+}
+.scenario-card--mint .scenario-card__icon {
+  color: #41978f;
+  background: #e6f5ef;
+}
+.scenario-card__copy {
+  min-width: 0;
+}
+.scenario-card__copy strong {
+  display: block;
+  color: #3c394f;
+  font-size: 13px;
+  font-weight: 600;
+}
+.scenario-card__copy small {
+  display: block;
+  margin-top: 5px;
+  color: #787284;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.scenario-card__arrow {
+  margin-left: auto;
+  color: #b4afc4;
+  font-size: 10px;
+}
 .section {
-  max-width: 1240px;
-  padding: 36px 24px 10px;
+  max-width: 1280px;
   margin: 0 auto;
+  padding: 32px 32px 12px;
+  scroll-margin-top: 80px;
 }
-
 .section--featured {
-  padding-bottom: 56px;
+  margin-top: 30px;
+  padding-top: 36px;
+  border-top: 1px solid var(--forge-border);
 }
-
 .section__head {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
+  gap: 16px;
   margin-bottom: 22px;
 }
-
+.section__eyebrow {
+  color: #81768f;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.7px;
+  margin-bottom: 8px;
+}
 .section__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: #101828;
+  color: var(--forge-text);
+  font-size: 23px;
+  font-weight: 650;
 }
-
+.section__count {
+  font-size: 11px;
+  padding: 2px 7px;
+  background: #eceaf4;
+  color: #7a718f;
+  border-radius: 6px;
+}
 .section__desc {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: #98a2b3;
+  margin: 7px 0 0;
+  color: #787284;
+  font-size: 12px;
 }
-
-.section__search {
-  width: 250px;
-}
-
-.tag-filter {
-  max-width: 260px;
-  margin-bottom: 16px;
-}
+.section__filters,
 .discovery-filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 20px;
 }
-
+.section__search {
+  width: 256px;
+}
+.tag-filter {
+  width: 214px;
+}
+.discovery-filters {
+  justify-content: space-between;
+}
 .app-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  gap: 22px;
 }
-
 .empty-state {
-  padding: 48px 0;
+  padding: 40px 20px;
+  border: 1px dashed #e3dfed;
+  border-radius: 14px;
+  background: #fff;
 }
-
+.loading-space {
+  min-height: 180px;
+}
 .pagination {
   display: flex;
   justify-content: center;
   margin-top: 28px;
 }
-
 .login-tip {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
   align-items: center;
-  justify-content: space-between;
-  padding: 26px 28px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid #e6e4f5;
-  border-radius: 16px;
+  gap: 18px;
+  padding: 28px;
+  background: #fff;
+  border: 1px solid var(--forge-border);
+  border-radius: 14px;
 }
-
-.login-tip__title {
+.login-tip__icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  color: var(--forge-accent);
+  background: var(--forge-accent-soft);
+  border-radius: 14px;
+  font-size: 23px;
+}
+.login-tip h3 {
   margin: 0;
-  font-size: 17px;
+  color: #454054;
+  font-size: 15px;
   font-weight: 600;
-  color: #242943;
 }
-
-.login-tip__desc {
+.login-tip p {
   margin: 6px 0 0;
-  font-size: 13px;
-  color: #7c8b99;
+  color: #9690a3;
+  font-size: 12px;
 }
-
-@media (max-width: 991px) {
-  .hero {
-    padding: 56px 20px 30px;
+.login-tip .ant-btn {
+  margin-left: auto;
+}
+@media (max-width: 1000px) {
+  .scenario-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .hero__title {
-    font-size: 38px;
-  }
-
   .app-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-
-@media (max-width: 767px) {
+@media (max-width: 600px) {
   .hero {
-    padding: 44px 16px 24px;
+    padding: 38px 16px 26px;
   }
-
   .hero__title {
     font-size: 30px;
+    letter-spacing: -1px;
   }
-
+  .hero__title span {
+    display: block;
+  }
   .hero__subtitle {
-    font-size: 15px;
+    font-size: 13px;
+    margin-bottom: 22px;
   }
-
   .prompt-panel {
-    padding: 14px 14px 10px;
+    padding: 16px;
     border-radius: 16px;
   }
-
+  .prompt-panel__input {
+    font-size: 14px;
+  }
+  .prompt-panel__hint {
+    display: none;
+  }
+  .prompt-panel__mode {
+    gap: 6px;
+  }
+  .prompt-panel__mode .ant-select {
+    min-width: 132px;
+  }
+  .scenario-label {
+    display: none;
+  }
+  .scenario-card {
+    padding: 12px 10px;
+    gap: 8px;
+  }
+  .scenario-card__arrow {
+    display: none;
+  }
+  .scenario-card__copy small {
+    font-size: 9px;
+  }
+  .scenario-card__icon {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
   .section {
-    padding: 34px 16px 8px;
+    padding: 28px 16px 8px;
   }
-
   .section__title {
-    font-size: 22px;
+    font-size: 21px;
   }
-
   .section__search {
     width: 100%;
   }
-
+  .section__filters .tag-filter,
+  .discovery-filters .tag-filter {
+    width: 100%;
+  }
   .app-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .login-tip {
+    padding: 20px;
+    gap: 12px;
+  }
+  .login-tip .ant-btn {
+    margin-left: 60px;
   }
 }
 </style>
