@@ -153,7 +153,9 @@ async function submitPassword() {
             :disabled="savingProfile"
             >修改密码并重新登录</a-button
           >
-          <p class="password-hint">忘记原密码？请联系站点管理员重置。</p>
+          <p class="password-hint">
+            忘记原密码？<router-link to="/user/forgot-password">前往找回密码</router-link>
+          </p>
         </a-form>
       </section>
     </div>
