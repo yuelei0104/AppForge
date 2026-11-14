@@ -21,7 +21,7 @@ export const menuItems: MenuItemConfig[] = [
   },
   {
     key: '/about',
-    label: '关于',
+    label: '使用指南',
   },
   {
     key: '/admin/appManage',
