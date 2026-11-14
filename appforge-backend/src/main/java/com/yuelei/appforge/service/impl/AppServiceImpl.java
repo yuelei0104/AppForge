@@ -767,6 +767,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 promptSafetyInputGuardrail.prepare(
                         initPrompt, "", loginUser.getId(), null, "CREATE_APP");
         initPrompt = prepared.message();
+        // 明确选择模式时按用户选择创建；仍先执行上面的输入检查。
+        // 未指定模式的旧客户端继续使用下方的自动路由和缓存。
+        if (StrUtil.isNotBlank(appAddRequest.getCodeGenType())) {
+            AppAddRequest selectedRequest = new AppAddRequest();
+            BeanUtil.copyProperties(appAddRequest, selectedRequest);
+            selectedRequest.setInitPrompt(initPrompt);
+            return addApp(selectedRequest, loginUser);
+        }
         // 构造入库对象
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
