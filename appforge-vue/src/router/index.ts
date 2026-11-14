@@ -41,6 +41,12 @@ const router = createRouter({
       component: UserLoginPage,
     },
     {
+      path: '/user/settings',
+      name: 'userSettings',
+      component: () => import('@/pages/user/UserSettingsPage.vue'),
+      meta: { access: ACCESS_ENUM.USER },
+    },
+    {
       path: '/user/register',
       name: 'userRegister',
       component: UserRegisterPage,

@@ -51,7 +51,7 @@ jobs:
         run: docker version
       - name: Verify streams, workspace and actual Docker builds
         working-directory: appforge-backend
-        run: bash mvnw -B -Dtest=GuardrailPipelineTest,LlmPromptReviewerTest,PromptSafetyInputGuardrailTest,GuardrailAppServiceTest,AppControllerGuardrailTest,VisualEditToolsTest,CoverTaskTest,CoverWorkerTest,CoverHttpTest,CoverChromeTest,CoverMySqlTest,VueBuilderRegistrationTest,VueProjectRuntimeTest,ToolStreamHandlerTest,VueToolStreamingTest,VueToolHttpCancellationTest,LangchainConfigurationTest,NativeCodeCompletionTest,CancellableCodeStreamTest,NativeAssetsTest,NativeSourceDownloadTest,AiCodeGeneratorServiceFactoryTest,AppCreationModeTest,AppWorkspaceTest,AiCodeGeneratorFacadeMemoryTest,AppServiceAccessTest,ChatHistoryIntegrationTest,ChatConversationExtensionsTest,AppMetadataTest,CodeParserTest,VueProjectTest test
+        run: bash mvnw -B -Dtest=UserAccountSettingsTest,GuardrailPipelineTest,LlmPromptReviewerTest,PromptSafetyInputGuardrailTest,GuardrailAppServiceTest,AppControllerGuardrailTest,VisualEditToolsTest,CoverTaskTest,CoverWorkerTest,CoverHttpTest,CoverChromeTest,CoverMySqlTest,VueBuilderRegistrationTest,VueProjectRuntimeTest,ToolStreamHandlerTest,VueToolStreamingTest,VueToolHttpCancellationTest,LangchainConfigurationTest,NativeCodeCompletionTest,CancellableCodeStreamTest,NativeAssetsTest,NativeSourceDownloadTest,AiCodeGeneratorServiceFactoryTest,AppCreationModeTest,AppWorkspaceTest,AiCodeGeneratorFacadeMemoryTest,AppServiceAccessTest,ChatHistoryIntegrationTest,ChatConversationExtensionsTest,AppMetadataTest,CodeParserTest,VueProjectTest test
       - name: Screenshot the actual Docker-built Vue project
         working-directory: appforge-backend
         env:

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Grid, message } from 'ant-design-vue'
-import { LogoutOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { LogoutOutlined, MenuOutlined, UserOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import UserInfo from '@/components/UserInfo.vue'
 import logoUrl from '@/assets/logo.png'
 import ACCESS_ENUM from '@/access/accessEnum'
@@ -90,7 +90,9 @@ async function handleLogout() {
 }
 
 function handleUserMenuClick({ key }: { key: string | number }) {
-  if (key === 'logout') {
+  if (key === 'settings') {
+    void router.push('/user/settings')
+  } else if (key === 'logout') {
     void handleLogout()
   }
 }
@@ -136,12 +138,17 @@ watch(
           <MenuOutlined />
         </a-button>
 
-        <a-dropdown v-if="loginUserStore.isLoggedIn" placement="bottomRight">
-          <div class="global-header__user" role="button" tabindex="0">
+        <a-dropdown v-if="loginUserStore.isLoggedIn" placement="bottomRight" :trigger="['click']">
+          <button type="button" class="global-header__user" aria-label="账号菜单">
             <UserInfo :user="loginUserStore.loginUser" :size="32" class="global-header__identity" />
-          </div>
+          </button>
           <template #overlay>
             <a-menu @click="handleUserMenuClick">
+              <a-menu-item key="settings">
+                <template #icon><SettingOutlined /></template>
+                个人设置
+              </a-menu-item>
+              <a-menu-divider />
               <a-menu-item key="logout">
                 <template #icon>
                   <LogoutOutlined />
@@ -251,6 +258,9 @@ watch(
 }
 
 .global-header__user {
+  border: 0;
+  background: transparent;
+  font: inherit;
   display: inline-flex;
   gap: 8px;
   align-items: center;

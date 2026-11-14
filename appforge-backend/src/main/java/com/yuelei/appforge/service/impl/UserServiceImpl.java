@@ -1,40 +1,56 @@
 package com.yuelei.appforge.service.impl;
 
+import static com.yuelei.appforge.constant.UserConstant.USER_LOGIN_STATE;
+
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.yuelei.appforge.exception.BusinessException;
 import com.yuelei.appforge.exception.ErrorCode;
+import com.yuelei.appforge.mapper.UserMapper;
 import com.yuelei.appforge.model.dto.user.UserQueryRequest;
 import com.yuelei.appforge.model.entity.User;
-import com.yuelei.appforge.mapper.UserMapper;
 import com.yuelei.appforge.model.enums.UserRoleEnum;
 import com.yuelei.appforge.model.vo.LoginUserVO;
 import com.yuelei.appforge.model.vo.UserVO;
 import com.yuelei.appforge.service.UserService;
+
 import jakarta.servlet.http.HttpServletRequest;
+
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static com.yuelei.appforge.constant.UserConstant.USER_LOGIN_STATE;
-
 /**
- *  服务层实现。
+ * 服务层实现。
  *
  * @author yuelei
  */
 @Service
-public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements UserService{
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
+        return userRegister(userAccount, userPassword, checkPassword, null);
+    }
+
+    @Override
+    public long userRegister(
+            String userAccount, String userPassword, String checkPassword, String userName) {
+        String nickname =
+                userName == null || userName.isBlank()
+                        ? "创作者_" + UUID.randomUUID().toString().substring(0, 8)
+                        : validateNickname(userName);
         // 1. 校验
         if (StrUtil.hasBlank(userAccount, userPassword, checkPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
@@ -61,7 +77,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         User user = new User();
         user.setUserAccount(userAccount);
         user.setUserPassword(encryptPassword);
-        user.setUserName("无名");
+        user.setUserName(nickname);
         user.setUserRole(UserRoleEnum.USER.getValue());
         boolean saveResult = this.save(user);
         if (!saveResult) {
@@ -73,7 +89,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
     public String getEncryptPassword(String userPassword) {
         // 盐值，混淆密码
         final String SALT = "yuelei123";
-        return DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
+        return DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
@@ -87,7 +103,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
     }
 
     @Override
-    public LoginUserVO userLogin(String userAccount, String userPassword, HttpServletRequest request) {
+    public LoginUserVO userLogin(
+            String userAccount, String userPassword, HttpServletRequest request) {
         // 1. 校验
         if (StrUtil.hasBlank(userAccount, userPassword)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "参数为空");
@@ -118,18 +135,82 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
     @Override
     public User getLoginUser(HttpServletRequest request) {
         // 先判断是否已登录
-        Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
-        User currentUser = (User) userObj;
+        var session = request.getSession(false);
+        Object userObj = session == null ? null : session.getAttribute(USER_LOGIN_STATE);
+        User currentUser = userObj instanceof User ? (User) userObj : null;
         if (currentUser == null || currentUser.getId() == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
         // 从数据库查询（追求性能的话可以注释，直接返回上述结果）
         long userId = currentUser.getId();
-        currentUser = this.getById(userId);
-        if (currentUser == null) {
+        User storedUser = this.getById(userId);
+        // 密码改变后，其他设备持有旧密码快照的会话在下次鉴权时也失效。
+        if (storedUser == null
+                || !Objects.equals(currentUser.getUserPassword(), storedUser.getUserPassword())) {
+            session.invalidate();
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
-        return currentUser;
+        return storedUser;
+    }
+
+    private String validateNickname(String value) {
+        if (value == null) throw new BusinessException(ErrorCode.PARAMS_ERROR, "请输入昵称");
+        String nickname = value.strip();
+        int length = nickname.codePointCount(0, nickname.length());
+        if (length < 2 || length > 24 || nickname.codePoints().anyMatch(Character::isISOControl)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "昵称需为 2～24 个字符，不能包含换行等控制字符");
+        }
+        return nickname;
+    }
+
+    @Override
+    public LoginUserVO updateMyProfile(String userName, HttpServletRequest request) {
+        User loginUser = getLoginUser(request);
+        String nickname = validateNickname(userName);
+        User patch = new User();
+        patch.setId(loginUser.getId());
+        patch.setUserName(nickname);
+        patch.setEditTime(LocalDateTime.now());
+        if (!updateById(patch))
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "昵称保存失败，请重试");
+        return getLoginUserVO(getById(loginUser.getId()));
+    }
+
+    @Override
+    public void updateMyPassword(
+            String oldPassword,
+            String newPassword,
+            String checkPassword,
+            HttpServletRequest request) {
+        User loginUser = getLoginUser(request);
+        if (StrUtil.hasBlank(oldPassword, newPassword, checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "请完整填写密码");
+        }
+        if (newPassword.length() < 8 || newPassword.length() > 64) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "新密码需为 8～64 位");
+        }
+        if (!newPassword.equals(checkPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "两次输入的新密码不一致");
+        }
+        String oldHash = getEncryptPassword(oldPassword);
+        if (!oldHash.equals(loginUser.getUserPassword())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "原密码不正确");
+        }
+        if (oldPassword.equals(newPassword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "新密码不能与原密码相同");
+        }
+        User patch = new User();
+        patch.setUserPassword(getEncryptPassword(newPassword));
+        patch.setEditTime(LocalDateTime.now());
+        // 条件更新，防止并发请求用已失效的原密码覆盖新密码。
+        int changed =
+                mapper.updateByQuery(
+                        patch,
+                        QueryWrapper.create()
+                                .eq("id", loginUser.getId())
+                                .eq("userPassword", oldHash));
+        if (changed != 1) throw new BusinessException(ErrorCode.OPERATION_ERROR, "密码已变更，请重新登录后重试");
+        request.getSession().invalidate();
     }
 
     @Override
@@ -175,12 +256,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         String sortField = userQueryRequest.getSortField();
         String sortOrder = userQueryRequest.getSortOrder();
         return QueryWrapper.create()
-            .eq("id", id)
-            .eq("userRole", userRole)
-            .like("userAccount", userAccount)
-            .like("userName", userName)
-            .like("userProfile", userProfile)
-            .orderBy(sortField, "ascend".equals(sortOrder));
+                .eq("id", id)
+                .eq("userRole", userRole)
+                .like("userAccount", userAccount)
+                .like("userName", userName)
+                .like("userProfile", userProfile)
+                .orderBy(sortField, "ascend".equals(sortOrder));
     }
-
 }
