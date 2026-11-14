@@ -48,6 +48,7 @@ import {
 } from '@ant-design/icons-vue'
 import aiAvatarUrl from '@/assets/aiAvatar.svg'
 import MarkdownContent from '@/components/MarkdownContent.vue'
+import ChatMessageCopyButton from '@/components/ChatMessageCopyButton.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import {
   deleteApp,
@@ -1408,6 +1409,16 @@ onBeforeUnmount(() => {
                 <span>{{ item.time }}</span>
                 <span v-if="item.status === 'stopped'">已停止 · 未保存</span>
                 <span v-if="item.status === 'error'">本次未保存</span>
+                <ChatMessageCopyButton
+                  :content="item.content"
+                  :label="
+                    item.role === 'user'
+                      ? '复制我的消息'
+                      : item.status === 'streaming'
+                        ? '复制当前 AI 回复'
+                        : '复制 AI 回复'
+                  "
+                />
               </div>
             </div>
           </div>
@@ -1957,6 +1968,8 @@ onBeforeUnmount(() => {
 
 .chat-message__meta {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: 5px;
   font-size: 11px;
