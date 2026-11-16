@@ -1,25 +1,47 @@
 :root {
-  --forge-accent: #6654d9;
-  --forge-accent-soft: #f0edff;
-  --forge-text: #242336;
-  --forge-muted: #737386;
-  --forge-border: #eae9f1;
-  --forge-surface: #fff;
-  --forge-background: #f8f9fc;
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'PingFang SC',
-    'Microsoft YaHei',
-    sans-serif;
+  /* Forge / 锻造台：暖纸桌面 + 近黑工作台 + 熔融橙 */
+  --forge-ink: #17151a;
+  --forge-paper: #f3eee5;
+  --forge-card: #fffdf9;
+  --forge-line: #ddd3c4;
+  --forge-muted: #6b645b;
+  --forge-muted-2: #8f877b;
+  --forge-orange: #f25b35;
+  --forge-orange-deep: #b84222;
+  --forge-orange-soft: #fbe8e1;
+  --forge-lime: #d8ef7a;
+  --forge-cobalt: #2f3fa8;
+  --forge-green: #2f7d5a;
+  --forge-red: #b23a2c;
+
+  /* 兼容旧变量；新代码优先使用上面的语义 token */
+  --forge-accent: var(--forge-orange-deep);
+  --forge-accent-soft: var(--forge-orange-soft);
+  --forge-text: var(--forge-ink);
+  --forge-border: var(--forge-line);
+  --forge-surface: var(--forge-card);
+  --forge-background: var(--forge-paper);
+
+  --forge-radius-sm: 8px;
+  --forge-radius-md: 12px;
+  --forge-radius-lg: 16px;
+  --forge-shadow-sm: 0 1px 2px rgb(23 21 26 / 5%), 0 8px 24px rgb(23 21 26 / 4%);
+  --forge-shadow-lg: 0 24px 70px rgb(23 21 26 / 12%);
+  --forge-font-display: 'Bahnschrift', 'DIN Alternate', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --forge-font-body:
+    Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    'Noto Sans SC', sans-serif;
+  --forge-font-mono: 'Cascadia Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  font-family: var(--forge-font-body);
   color: var(--forge-text);
   background: var(--forge-background);
 }
 
 body {
   margin: 0;
+  color: var(--forge-text);
+  background: var(--forge-paper);
 }
 *,
 *::before,
@@ -34,15 +56,15 @@ textarea {
 button:focus-visible,
 a:focus-visible,
 [tabindex='0']:focus-visible {
-  outline: 3px solid #b0a6f1;
+  outline: 3px solid var(--forge-orange);
   outline-offset: 3px;
 }
 html {
   scroll-padding-top: 88px;
 }
 ::selection {
-  background: #e7e1ff;
-  color: #352570;
+  color: var(--forge-ink);
+  background: var(--forge-lime);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -22,9 +22,7 @@ const isWorkspace = computed(() => route.name === 'appChat')
         }"
       >
         <RouterView v-slot="{ Component, route }">
-          <transition name="basic-layout-fade" mode="out-in">
-            <component :is="Component" :key="route.path" />
-          </transition>
+          <component :is="Component" :key="route.path" />
         </RouterView>
       </div>
     </a-layout-content>
@@ -61,16 +59,6 @@ const isWorkspace = computed(() => route.name === 'appChat')
 .basic-layout__container--workspace {
   max-width: none;
   padding: 0;
-}
-
-.basic-layout-fade-enter-active,
-.basic-layout-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.basic-layout-fade-enter-from,
-.basic-layout-fade-leave-to {
-  opacity: 0;
 }
 
 @media (max-width: 767px) {

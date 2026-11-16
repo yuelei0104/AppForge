@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { Grid, message } from 'ant-design-vue'
 import { LogoutOutlined, MenuOutlined, UserOutlined, SettingOutlined } from '@ant-design/icons-vue'
 import UserInfo from '@/components/UserInfo.vue'
-import logoUrl from '@/assets/logo.png'
 import ACCESS_ENUM from '@/access/accessEnum'
 import type { AccessType } from '@/access/accessEnum'
 import checkAccess from '@/access/checkAccess'
@@ -110,9 +109,11 @@ watch(
   <a-layout-header class="global-header">
     <div class="global-header__inner">
       <router-link to="/" class="global-header__brand" aria-label="返回首页">
-        <img :src="logoUrl" alt="网站 logo" class="global-header__logo" />
-        <span class="global-header__title">{{ title }}</span>
-        <span class="global-header__badge">AI 创作空间</span>
+        <span class="global-header__mark" aria-hidden="true"><span>&lt;/&gt;</span></span>
+        <span class="global-header__wordmark">
+          <strong>{{ title }}</strong>
+          <small>AI PRODUCT STUDIO</small>
+        </span>
       </router-link>
 
       <a-menu
@@ -189,18 +190,18 @@ watch(
   position: sticky;
   top: 0;
   z-index: 100;
-  height: 64px;
-  padding: 0 24px;
+  height: 72px;
+  padding: 0 28px;
   line-height: normal;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid #f0f0f0;
+  background: rgb(243 238 229 / 88%);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgb(23 21 26 / 9%);
 }
 
 .global-header__inner {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 28px;
   width: 100%;
   max-width: 1360px;
   min-width: 0;
@@ -218,36 +219,81 @@ watch(
   text-decoration: none;
 }
 
-.global-header__logo {
+.global-header__mark {
+  display: grid;
   flex: none;
+  place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  color: var(--forge-ink);
+  background: var(--forge-orange);
+  border-radius: 9px;
+  box-shadow: inset 0 -2px 0 rgb(23 21 26 / 12%);
 }
 
-.global-header__title {
+.global-header__mark span {
+  font-family: var(--forge-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  transform: translateY(-1px);
+}
+
+.global-header__wordmark {
+  display: grid;
+  gap: 1px;
   min-width: 0;
+}
+
+.global-header__wordmark strong {
   overflow: hidden;
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 24px;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--forge-ink);
+  font-family: var(--forge-font-display);
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
   text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.global-header__wordmark small {
+  color: var(--forge-muted-2);
+  font-family: var(--forge-font-mono);
+  font-size: 7px;
+  letter-spacing: 0.22em;
   white-space: nowrap;
 }
 
 .global-header__menu {
   flex: 1;
   min-width: 0;
-  line-height: 62px;
+  margin-left: 20px;
+  line-height: 70px;
   background: transparent;
   border-bottom: none;
+}
+
+.global-header__menu :deep(.ant-menu-item) {
+  color: var(--forge-muted);
+  font-size: 13px;
+}
+
+.global-header__menu :deep(.ant-menu-item-selected) {
+  color: var(--forge-ink);
+  font-weight: 600;
+}
+
+.global-header__menu :deep(.ant-menu-item-selected::after) {
+  border-bottom-color: var(--forge-orange);
+  border-bottom-width: 2px;
 }
 
 .global-header__actions {
   display: flex;
   flex: none;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   margin-left: auto;
 }
@@ -258,53 +304,57 @@ watch(
 }
 
 .global-header__user {
-  border: 0;
-  background: transparent;
-  font: inherit;
   display: inline-flex;
   gap: 8px;
   align-items: center;
   padding: 4px 8px;
+  font: inherit;
   cursor: pointer;
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
   transition: background-color 0.2s;
 }
 
 .global-header__user:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgb(23 21 26 / 6%);
 }
 
 .global-header__identity {
   max-width: 160px;
   overflow: hidden;
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.88);
+  font-size: 13px;
+  color: var(--forge-ink);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.global-header__badge {
-  font-size: 11px;
-  color: var(--forge-accent);
-  background: var(--forge-accent-soft);
-  padding: 4px 8px;
-  border-radius: 6px;
-  white-space: nowrap;
-}
 .global-header__shortcut {
   color: var(--forge-muted);
+  font-size: 13px;
   white-space: nowrap;
-  font-size: 14px;
 }
+
 .global-header__shortcut:hover {
-  color: var(--forge-accent);
+  color: var(--forge-orange-deep);
+}
+
+.global-header__actions :deep(.ant-btn-primary) {
+  color: var(--forge-ink);
+  background: var(--forge-orange);
+  border-color: var(--forge-orange);
+  box-shadow: inset 0 -2px 0 rgb(23 21 26 / 16%);
+}
+
+.global-header__actions :deep(.ant-btn-primary:hover) {
+  color: var(--forge-ink) !important;
+  background: #ff6d48 !important;
+  border-color: #ff6d48 !important;
 }
 
 @media (max-width: 767px) {
-  .global-header__badge {
-    display: none;
-  }
   .global-header {
+    height: 64px;
     padding: 0 16px;
   }
 
@@ -312,13 +362,17 @@ watch(
     gap: 12px;
   }
 
-  .global-header__logo {
+  .global-header__mark {
     width: 32px;
     height: 32px;
   }
 
-  .global-header__title {
-    font-size: 15px;
+  .global-header__wordmark strong {
+    font-size: 17px;
+  }
+
+  .global-header__wordmark small {
+    display: none;
   }
 
   .global-header__identity {
@@ -327,7 +381,7 @@ watch(
 }
 
 @media (max-width: 375px) {
-  .global-header__title {
+  .global-header__wordmark strong {
     max-width: 130px;
   }
 }

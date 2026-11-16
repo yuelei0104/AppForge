@@ -60,7 +60,7 @@ import {
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import { API_BASE_URL } from '@/config/env'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { getAppDeployUrlFromResponse, getAppPreviewUrl } from '@/utils/appUrls'
+import { getAppDeployUrl, getAppDeployUrlFromResponse, getAppPreviewUrl } from '@/utils/appUrls'
 
 const route = useRoute()
 const router = useRouter()
@@ -488,6 +488,24 @@ const readOnlyHint = computed(() =>
   app.value && !isOwner.value ? '无法在别人的作品下对话哦～' : undefined,
 )
 const canManage = computed(() => !!app.value && (isOwner.value || isAdmin.value))
+const shareUrl = computed(() =>
+  app.value?.deployKey && app.value.deploymentStatus === 'ONLINE'
+    ? getAppDeployUrl(app.value.deployKey)
+    : '',
+)
+
+async function copyShareLink() {
+  if (!shareUrl.value) {
+    message.warning('应用发布后才能分享')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(shareUrl.value)
+    message.success('访问链接已复制')
+  } catch {
+    message.error('复制失败，请手动复制地址')
+  }
+}
 
 function nextMessageId() {
   messageSeed += 1
@@ -1155,7 +1173,6 @@ onBeforeUnmount(() => {
           v-if="app?.codeGenType"
           aria-label="当前生成类型"
           class="code-gen-type-tag"
-          color="blue"
           :title="
             app.codeGenType === 'vue_project'
               ? '构建成功后可下载完整工程'
@@ -1190,18 +1207,6 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="app-chat-page__topbar-actions">
-        <a-button
-          v-if="isOwner"
-          :loading="downloadingSource"
-          :disabled="!app?.currentVersion || isGenerating || deleting || deployLoading"
-          @click="downloadSource"
-        >
-          <template #icon><DownloadOutlined /></template>
-          {{ app?.codeGenType === 'vue_project' ? '下载工程' : '下载源码' }}
-        </a-button>
-        <a-button v-if="canManage" class="workspace-history" @click="historyOpen = true"
-          ><HistoryOutlined />版本历史</a-button
-        >
         <a-dropdown :trigger="['click']" placement="bottomRight">
           <a-button aria-label="更多应用操作"><MoreOutlined />更多</a-button>
           <template #overlay>
@@ -1209,18 +1214,31 @@ onBeforeUnmount(() => {
               <a-menu-item key="detail" :disabled="!app || appLoading" @click="detailsOpen = true"
                 ><InfoCircleOutlined /> 应用详情</a-menu-item
               >
+              <a-menu-item key="share" :disabled="!shareUrl" @click="copyShareLink"
+                ><LinkOutlined /> 复制访问链接</a-menu-item
+              >
+              <a-menu-item
+                v-if="isOwner"
+                key="download"
+                :disabled="!app?.currentVersion || isGenerating || downloadingSource"
+                @click="downloadSource"
+                ><DownloadOutlined />
+                {{
+                  downloadingSource
+                    ? '正在打包'
+                    : app?.codeGenType === 'vue_project'
+                      ? '下载工程'
+                      : '下载源码'
+                }}</a-menu-item
+              >
+              <a-menu-item v-if="canManage" key="history" @click="historyOpen = true"
+                ><HistoryOutlined /> 版本历史</a-menu-item
+              >
               <a-menu-item v-if="canManage" key="memory" @click="openMemory"
                 ><BulbOutlined /> 智能记忆</a-menu-item
               >
               <a-menu-item v-if="canManage" key="export" :disabled="exporting" @click="handleExport"
                 ><DownloadOutlined /> {{ exporting ? '正在导出' : '导出对话' }}</a-menu-item
-              >
-              <a-menu-item
-                v-if="canManage"
-                key="history"
-                class="workspace-history-menu"
-                @click="historyOpen = true"
-                ><HistoryOutlined /> 版本历史</a-menu-item
               >
             </a-menu>
           </template>
@@ -1378,6 +1396,7 @@ onBeforeUnmount(() => {
                       v-if="item.progress?.length"
                       :items="item.progress"
                       :stopped="item.status === 'stopped' || item.status === 'error'"
+                      :active="item.status === 'streaming'"
                     />
                   </template>
                   <template v-else>{{ item.content }}</template>
@@ -2221,32 +2240,49 @@ onBeforeUnmount(() => {
   }
   .workspace--preview .preview-panel {
     display: flex;
+    position: fixed;
+    inset: 64px 8px 76px;
+    z-index: 20;
+    overflow: hidden;
+    background: var(--forge-card);
+    border: 1px solid #cfc2b1;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgb(23 21 26 / 24%);
   }
   .workspace--preview .chat-panel {
     display: none;
   }
   .workspace-mobile-nav {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    z-index: 30;
     display: flex;
-    flex: none;
-    background: #eae8f1;
-    padding: 4px;
-    border-radius: 10px;
     gap: 4px;
+    padding: 4px;
+    background: rgb(27 25 24 / 94%);
+    border: 1px solid rgb(255 253 249 / 12%);
+    border-radius: 10px;
+    box-shadow: 0 10px 28px rgb(23 21 26 / 22%);
+    backdrop-filter: blur(10px);
   }
   .workspace-mobile-nav button {
     flex: 1;
-    padding: 8px;
-    color: #8c839c;
-    font-size: 12px;
+    padding: 9px;
+    color: #a99e90;
+    font-size: 11px;
+    cursor: pointer;
     background: transparent;
     border: 0;
     border-radius: 7px;
-    cursor: pointer;
   }
   .workspace-mobile-nav button[aria-pressed='true'] {
-    color: var(--forge-accent);
-    background: #fff;
-    box-shadow: 0 1px 3px #2420300a;
+    color: var(--forge-ink);
+    background: var(--forge-lime);
+  }
+  .app-chat-page__body {
+    padding-bottom: 62px;
   }
   .workspace-status__hint {
     display: none;
@@ -2502,4 +2538,110 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
   }
 }
-</style>
+/* Forge workspace skin */
+.app-chat-page {
+  gap: 10px;
+  padding: 12px;
+  background: var(--forge-paper);
+}
+
+.app-chat-page__topbar {
+  min-height: 52px;
+  padding: 7px 12px;
+  background: var(--forge-card);
+  border-color: #d8ccbb;
+  border-radius: 8px;
+}
+
+.app-chat-page__app-name {
+  color: var(--forge-ink);
+  font-family: var(--forge-font-display);
+  font-size: 15px;
+  background: #f1e8da;
+  border: 1px solid #e0d4c2;
+  border-radius: 6px;
+}
+
+.app-chat-page__topbar-left :deep(.ant-tag),
+.code-gen-type-tag {
+  margin: 0;
+  color: var(--forge-muted);
+  font-family: var(--forge-font-mono);
+  font-size: 9px;
+  background: #f2eadf;
+  border: 0;
+}
+
+.workspace-status {
+  padding: 7px 12px;
+  margin: 0;
+  color: var(--forge-muted);
+  background: rgb(255 253 249 / 76%);
+  border: 1px solid #d8ccbb;
+  border-radius: 7px;
+}
+
+.chat-panel,
+.preview-panel {
+  background: var(--forge-card);
+  border-color: #d8ccbb;
+  border-radius: 8px;
+}
+
+.chat-panel__messages {
+  background: var(--forge-card);
+}
+
+.chat-panel__heading {
+  background: #f5eee3;
+  border-bottom: 1px solid #e3d8c8;
+}
+
+.chat-message__bubble {
+  background: #f5eee3;
+  border-color: #e3d8c8;
+  border-radius: 3px 10px 10px;
+  box-shadow: none;
+}
+
+.chat-message--user .chat-message__bubble {
+  color: var(--forge-paper);
+  background: var(--forge-ink);
+  border-color: var(--forge-ink);
+  border-radius: 10px 3px 10px 10px;
+}
+
+.chat-panel__composer {
+  background: var(--forge-card);
+  border-color: #d8ccbb;
+}
+
+.chat-panel__composer:focus-within {
+  border-color: var(--forge-orange);
+  box-shadow: 0 0 0 2px rgb(242 91 53 / 10%);
+}
+
+.preview-panel__header {
+  background: #f5eee3;
+  border-bottom-color: #e3d8c8;
+}
+
+.preview-panel__title {
+  color: var(--forge-ink);
+  font-family: var(--forge-font-display);
+}
+
+.preview-panel__tab--active {
+  color: var(--forge-ink);
+  background: var(--forge-card);
+}
+
+.preview-panel__body,
+.preview-panel__viewport {
+  background: #eee5d8;
+}
+
+.preview-panel__mask {
+  color: var(--forge-muted);
+  background: rgb(255 253 249 / 86%);
+}</style>

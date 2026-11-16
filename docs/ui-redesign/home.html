@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440" />
+<title>AppForge — Forge Direction / Home</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  body { width: 1440px; height: 1100px; overflow: hidden; background: var(--paper); }
+  .page {
+    width: 1440px; height: 1100px; position: relative; overflow: hidden;
+    background:
+      radial-gradient(900px 500px at 76% 4%, rgba(242,91,53,.12), transparent 62%),
+      radial-gradient(700px 420px at 12% 90%, rgba(47,63,168,.06), transparent 65%),
+      var(--paper);
+  }
+  .page::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .34;
+    background-image: linear-gradient(rgba(23,21,26,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(23,21,26,.035) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: linear-gradient(to bottom, black, transparent 72%);
+  }
+  .nav {
+    height: 72px; width: 1280px; margin: 0 auto; position: relative; z-index: 3;
+    display: flex; align-items: center; gap: 30px;
+    border-bottom: 1px solid rgba(23,21,26,.1);
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .nav__links { display: flex; gap: 26px; margin-left: 24px; }
+  .nav__links a { color: var(--ink-2); text-decoration: none; font-size: 13px; font-weight: 600; }
+  .nav__links a:first-child { color: var(--ink); position: relative; }
+  .nav__links a:first-child::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -9px; height: 2px; background: var(--orange);
+  }
+  .nav__actions { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+  .nav__login { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .nav__cta { padding: 10px 17px; border-radius: 9px; }
+
+  .hero {
+    width: 1280px; margin: 0 auto; padding: 54px 0 36px;
+    display: grid; grid-template-columns: 690px 1fr; gap: 34px;
+    position: relative; z-index: 2;
+  }
+  .hero__copy { padding-top: 10px; }
+  .hero__eyebrow { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .hero__eyebrow i { display: block; width: 34px; height: 1px; background: var(--orange); }
+  h1 {
+    margin: 0; font-family: var(--display); font-size: 66px; line-height: 1.05;
+    letter-spacing: -.035em; font-weight: 800;
+  }
+  h1 em { font-style: normal; color: var(--orange); position: relative; }
+  h1 em::after {
+    content: ''; position: absolute; left: 2px; right: 2px; bottom: 7px; height: 9px;
+    background: var(--lime); z-index: -1; transform: skewX(-10deg);
+  }
+  .hero__sub { margin: 18px 0 25px; font-size: 15px; line-height: 1.75; color: var(--muted); max-width: 560px; }
+  .hero__sub b { color: var(--ink); font-weight: 700; }
+
+  .prompt {
+    width: 646px; background: var(--card); border: 1.5px solid var(--ink);
+    border-radius: 16px; padding: 17px 17px 13px;
+    box-shadow: 7px 8px 0 rgba(23,21,26,.1);
+  }
+  .prompt__label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .prompt__label span { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--muted); }
+  .prompt__label b { font-size: 10px; font-weight: 600; color: var(--muted-2); }
+  .prompt__text { font-size: 15px; line-height: 1.75; color: var(--ink); min-height: 72px; }
+  .prompt__text span { color: var(--muted-2); }
+  .prompt__caret { display: inline-block; width: 2px; height: 17px; background: var(--orange); vertical-align: -3px; margin-left: 2px; }
+  .prompt__footer { display: flex; align-items: center; gap: 7px; border-top: 1px dashed var(--line); padding-top: 11px; margin-top: 2px; }
+  .prompt__footer .grow { flex: 1; }
+  .send {
+    width: 38px; height: 38px; border: 0; border-radius: 9px; background: var(--ink); color: #fff;
+    display: grid; place-items: center; font-size: 17px; margin-left: 4px;
+  }
+  .prompt__hint { font-family: var(--mono); font-size: 9px; color: var(--muted-2); margin-right: 4px; }
+
+  .trust { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+  .avatars { display: flex; }
+  .avatars i {
+    width: 24px; height: 24px; border-radius: 999px; border: 2px solid var(--paper); margin-left: -7px;
+    display: block; background: #c8b9a8;
+  }
+  .avatars i:nth-child(1) { margin-left: 0; background: #b9c6a6; }
+  .avatars i:nth-child(2) { background: #e0a58b; }
+  .avatars i:nth-child(3) { background: #9aa7c7; }
+  .avatars i:nth-child(4) { background: #d6c27f; }
+  .trust p { margin: 0; font-size: 11px; color: var(--muted); }
+  .trust b { color: var(--ink); }
+
+  .visual { position: relative; height: 520px; }
+  .visual__rule {
+    position: absolute; top: 4px; right: 8px; font-family: var(--mono); font-size: 9px;
+    letter-spacing: .18em; color: var(--muted-2); writing-mode: vertical-rl;
+  }
+  .artifact {
+    position: absolute; background: var(--card); border: 1px solid var(--line-dark);
+    border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(23,21,26,.18);
+  }
+  .artifact--back {
+    width: 420px; height: 300px; right: 18px; top: 2px; transform: rotate(5deg);
+    background: #ded4c5; border-color: #c8b9a6;
+  }
+  .artifact--back2 {
+    width: 420px; height: 300px; right: 0; top: 16px; transform: rotate(9deg);
+    background: #cfc3b1; border-color: #b9aa96;
+  }
+  .artifact--main { width: 512px; height: 390px; right: 34px; top: 54px; transform: rotate(-1.2deg); background: #19161d; }
+  .chrome { height: 34px; display: flex; align-items: center; gap: 5px; padding: 0 12px; background: #221e27; border-bottom: 1px solid #332d3b; }
+  .chrome i { width: 6px; height: 6px; border-radius: 999px; background: #5a5264; }
+  .chrome span { margin-left: 9px; font-family: var(--mono); font-size: 9px; color: #8d8495; }
+  .mini-site { position: relative; height: 356px; overflow: hidden; background: #19161d; }
+  .mini-site::after {
+    content: ''; position: absolute; width: 330px; height: 330px; border-radius: 50%;
+    right: -90px; top: -100px; background: radial-gradient(circle, rgba(242,91,53,.75), rgba(242,91,53,0) 67%);
+  }
+  .mini-nav { position: relative; z-index: 2; display: flex; align-items: center; padding: 18px 25px; gap: 18px; }
+  .mini-nav b { color: #fff; font-family: var(--display); font-size: 12px; letter-spacing: .06em; }
+  .mini-nav span { color: #a49cab; font-size: 7px; }
+  .mini-nav .mini-pill { margin-left: auto; border: 1px solid #574e5e; color: #ddd5e0; border-radius: 999px; padding: 5px 9px; font-size: 6px; }
+  .mini-hero { position: relative; z-index: 2; padding: 27px 25px 0; width: 330px; }
+  .mini-hero small { font-family: var(--mono); font-size: 7px; letter-spacing: .16em; color: #f2a18a; }
+  .mini-hero h3 { font-family: var(--display); color: #fff; font-size: 35px; line-height: 1.08; letter-spacing: -.04em; margin: 9px 0 12px; }
+  .mini-hero h3 em { font-style: normal; color: #ffb49e; }
+  .mini-hero p { color: #9d94a3; font-size: 8px; line-height: 1.7; width: 240px; margin: 0 0 15px; }
+  .mini-btn { display: inline-block; background: var(--orange); color: #17151a; font-size: 8px; font-weight: 800; padding: 7px 12px; border-radius: 4px; }
+  .mini-cards { position: absolute; right: 22px; bottom: 22px; display: flex; gap: 7px; z-index: 2; }
+  .mini-card { width: 72px; height: 90px; border-radius: 7px; background: linear-gradient(160deg, #f6e8da, #c8b49c); border: 1px solid rgba(255,255,255,.25); }
+  .mini-card:nth-child(2) { background: linear-gradient(150deg, #e2e5dc, #99a78f); transform: translateY(-10px); }
+  .mini-card:nth-child(3) { background: linear-gradient(150deg, #2f3fa8, #151a4a); }
+  .float {
+    position: absolute; left: 8px; bottom: 56px; background: var(--card); border: 1px solid var(--ink);
+    border-radius: 11px; padding: 12px 15px; box-shadow: 5px 6px 0 rgba(23,21,26,.12); width: 215px;
+  }
+  .float__top { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 800; }
+  .float p { margin: 5px 0 8px; font-size: 9px; color: var(--muted); }
+  .float__bar { height: 4px; background: var(--paper-2); border-radius: 99px; overflow: hidden; }
+  .float__bar i { display: block; width: 76%; height: 100%; background: var(--orange); }
+  .float--code {
+    position: absolute; z-index: 5; left: auto; right: 4px; bottom: 2px; width: 168px; background: #211d26; color: #d9d1df;
+    border-color: #3c3546; font-family: var(--mono); font-size: 8px; line-height: 1.9; padding: 12px 14px;
+    box-shadow: 7px 8px 0 rgba(23,21,26,.08); transform: rotate(2deg);
+  }
+  .float--code b { color: var(--lime); font-weight: 500; }
+  .float--code span { color: #8d8495; }
+  .visual__note { position: absolute; left: 24px; top: 8px; font-family: var(--mono); font-size: 9px; letter-spacing: .16em; color: var(--muted-2); }
+
+  .proof {
+    width: 1280px; margin: 8px auto 0; padding: 12px 0 15px; display: flex; align-items: center; gap: 20px;
+    border-top: 1px solid rgba(23,21,26,.12); border-bottom: 1px solid rgba(23,21,26,.08);
+    position: relative; z-index: 2;
+  }
+  .proof__label { font-family: var(--mono); font-size: 9px; letter-spacing: .12em; color: var(--muted-2); width: 95px; }
+  .proof__item { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .proof__item b { font-family: var(--display); color: var(--ink); font-size: 15px; letter-spacing: -.02em; }
+  .proof__sep { width: 1px; height: 17px; background: var(--line); }
+  .proof__right { margin-left: auto; font-size: 10px; color: var(--muted-2); }
+
+  .gallery { width: 1280px; margin: 22px auto 0; position: relative; z-index: 2; }
+  .gallery__head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 13px; }
+  .gallery__head h2 { margin: 0; font-family: var(--display); font-size: 21px; letter-spacing: -.02em; }
+  .gallery__head h2 span { color: var(--muted-2); font-family: var(--mono); font-size: 9px; letter-spacing: .12em; margin-left: 9px; vertical-align: 3px; }
+  .gallery__head a { color: var(--ink); font-size: 11px; font-weight: 700; text-decoration: none; border-bottom: 1px solid var(--ink); padding-bottom: 2px; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .card__cover { height: 170px; position: relative; overflow: hidden; }
+  .card__cover--1 { background: #1c1820; }
+  .card__cover--2 { background: #e8dfd2; }
+  .card__cover--3 { background: #25324b; }
+  .cover-ui { position: absolute; inset: 18px 20px; border: 1px solid rgba(255,255,255,.16); border-radius: 7px; padding: 14px; color: #fff; overflow: hidden; }
+  .cover-ui__nav { display: flex; gap: 6px; align-items: center; margin-bottom: 22px; }
+  .cover-ui__nav i { width: 5px; height: 5px; border: 1px solid rgba(255,255,255,.6); border-radius: 99px; }
+  .cover-ui__nav b { font-family: var(--mono); font-size: 6px; letter-spacing: .08em; margin-left: 4px; }
+  .cover-ui h4 { font-family: var(--display); margin: 0 0 8px; font-size: 22px; line-height: 1.05; letter-spacing: -.03em; }
+  .cover-ui h4 em { font-style: normal; color: #ff9e82; }
+  .cover-ui p { margin: 0; font-size: 7px; line-height: 1.6; color: rgba(255,255,255,.6); width: 70%; }
+  .cover-ui__blocks { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 6px; }
+  .cover-ui__blocks i { display: block; width: 47px; height: 66px; border-radius: 4px; background: #f4ddc9; }
+  .cover-ui__blocks i:nth-child(2) { background: #baa58d; }
+  .card__cover--2 .cover-ui { border-color: rgba(23,21,26,.12); color: var(--ink); }
+  .card__cover--2 .cover-ui h4 em { color: var(--cobalt); }
+  .card__cover--2 .cover-ui p { color: rgba(23,21,26,.55); }
+  .card__cover--2 .cover-ui__blocks i { background: var(--cobalt); }
+  .card__body { padding: 12px 14px 13px; display: flex; align-items: center; gap: 10px; }
+  .card__body h5 { margin: 0; font-size: 11px; font-weight: 800; }
+  .card__body p { margin: 3px 0 0; font-size: 9px; color: var(--muted); }
+  .card__tag { margin-left: auto; font-family: var(--mono); font-size: 8px; color: var(--muted-2); }
+  .card__arrow { width: 22px; height: 22px; border: 1px solid var(--line); border-radius: 999px; display: grid; place-items: center; font-size: 10px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="nav">
+    <div class="brand"><span class="logo-mark">&lt;/&gt;</span><div class="wordmark">APPFORGE<small>AI PRODUCT STUDIO</small></div></div>
+    <nav class="nav__links"><a href="#">创作</a><a href="#">案例</a><a href="#">指南</a></nav>
+    <div class="nav__actions"><span class="nav__login">登录</span><span class="btn btn--orange nav__cta">开始创作 <b>↗</b></span></div>
+  </header>
+
+  <main class="hero">
+    <div class="hero__copy">
+      <div class="hero__eyebrow"><i></i><span class="eyebrow">From prompt to product</span></div>
+      <h1>把想法，<br /><em>锻造</em>成产品。</h1>
+      <p class="hero__sub">描述你要做的产品，AppForge 会完成<b>页面生成、预览、修改与发布</b>。从第一版到上线，都在同一个工作台里。</p>
+
+      <div class="prompt">
+        <div class="prompt__label"><span>DESCRIBE YOUR PRODUCT</span><b>2000 字以内</b></div>
+        <div class="prompt__text">帮我做一个科技公司官网，深色背景、橙色强调色，包含产品、客户案例和联系表单。<span class="prompt__caret"></span></div>
+        <div class="prompt__footer">
+          <span class="chip chip--active">多页应用</span>
+          <span class="chip">落地页</span>
+          <span class="chip">管理后台</span>
+          <span class="grow"></span>
+          <span class="prompt__hint">⌘ ↵</span>
+          <button class="send">↑</button>
+        </div>
+      </div>
+
+      <div class="trust">
+        <div class="avatars"><i></i><i></i><i></i><i></i></div>
+        <p><b>12,480+</b> 个应用已经从这里上线</p>
+        <span class="proof__sep"></span>
+        <p>平均 <b>48 秒</b> 得到第一版</p>
+      </div>
+    </div>
+
+    <div class="visual">
+      <span class="visual__note">LIVE ARTIFACT / 01</span>
+      <span class="visual__rule">IDEA → BUILD → SHIP</span>
+      <div class="artifact artifact--back2"></div>
+      <div class="artifact artifact--back"></div>
+      <div class="artifact artifact--main">
+        <div class="chrome"><i></i><i></i><i></i><span>appforge.site/acme</span></div>
+        <div class="mini-site">
+          <div class="mini-nav"><b>ACME</b><span>产品</span><span>案例</span><span>关于</span><span class="mini-pill">预约演示</span></div>
+          <div class="mini-hero">
+            <small>DESIGNED FOR CLARITY</small>
+            <h3>让复杂的技术，<br />变得<em>简单</em>。</h3>
+            <p>为成长型团队提供一站式基础设施，从第一天起就保持敏捷。</p>
+            <span class="mini-btn">开始使用 →</span>
+          </div>
+          <div class="mini-cards"><i class="mini-card"></i><i class="mini-card"></i><i class="mini-card"></i></div>
+        </div>
+      </div>
+      <div class="float">
+        <div class="float__top"><span class="status-dot"></span>第一版已生成</div>
+        <p>3 个页面 · 12 个组件 · 刚刚</p>
+        <div class="float__bar"><i></i></div>
+      </div>
+      <div class="float--code"><b>export</b> default <span>function</span> App() {<br />&nbsp;&nbsp;<span>return</span> &lt;Hero /&gt;;<br />}</div>
+    </div>
+  </main>
+
+  <section class="proof">
+    <span class="proof__label">BUILT WITH FORGE</span>
+    <span class="proof__item"><b>2,140</b> 官网 / 落地页</span><span class="proof__sep"></span>
+    <span class="proof__item"><b>680</b> 管理后台</span><span class="proof__sep"></span>
+    <span class="proof__item"><b>410</b> 数据看板</span>
+    <span class="proof__right">每一个都可以继续编辑、导出与发布</span>
+  </section>
+
+  <section class="gallery">
+    <div class="gallery__head"><h2>刚刚完成的作品 <span>CURATED / 03</span></h2><a href="#">查看全部案例 →</a></div>
+    <div class="cards">
+      <article class="card">
+        <div class="card__cover card__cover--1"><div class="cover-ui"><div class="cover-ui__nav"><i></i><i></i><i></i><b>NORTHSTAR</b></div><h4>让每一次<br /><em>出发</em>都有方向。</h4><p>为现代团队打造的户外装备与生活方式品牌。</p><div class="cover-ui__blocks"><i></i><i></i></div></div></div>
+        <div class="card__body"><div><h5>Northstar 户外品牌</h5><p>品牌官网 · 6 个页面</p></div><span class="card__tag">v3</span><span class="card__arrow">↗</span></div>
+      </article>
+      <article class="card">
+        <div class="card__cover card__cover--2"><div class="cover-ui"><div class="cover-ui__nav"><i></i><i></i><i></i><b>STUDIO / 24</b></div><h4>把日常，<br />整理成<em>秩序</em>。</h4><p>轻量、安静、专注的个人工作台。</p><div class="cover-ui__blocks"><i></i><i></i></div></div></div>
+        <div class="card__body"><div><h5>Studio 24 工作台</h5><p>管理后台 · 4 个页面</p></div><span class="card__tag">v2</span><span class="card__arrow">↗</span></div>
+      </article>
+      <article class="card">
+        <div class="card__cover card__cover--3"><div class="cover-ui"><div class="cover-ui__nav"><i></i><i></i><i></i><b>SIGNAL LAB</b></div><h4>数据，<br /><em>会说话</em>。</h4><p>把增长信号变成下一步行动。</p><div class="cover-ui__blocks"><i></i><i></i></div></div></div>
+        <div class="card__body"><div><h5>Signal Lab 数据看板</h5><p>数据产品 · 3 个页面</p></div><span class="card__tag">v1</span><span class="card__arrow">↗</span></div>
+      </article>
+    </div>
+  </section>
+</div>
+</body>
+</html>

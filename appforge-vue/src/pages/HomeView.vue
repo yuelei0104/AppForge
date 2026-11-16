@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { createAppWithMode, listPublicApps, type AppInfo, type AppFilters } from '@/api/workspace'
 import { CodeGenTypeEnum } from '@/config/codeGenType'
-import { generationModeOptions, type GenerationMode } from '@/utils/generationMode'
+import type { GenerationMode } from '@/utils/generationMode'
 import { coverPending } from '@/utils/cover'
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -16,9 +16,10 @@ import {
   BarChartOutlined,
   ControlOutlined,
   PlusOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 import AppCard from '@/components/AppCard.vue'
+import HeroArtifact from '@/components/HeroArtifact.vue'
+import FeaturedWorkStrip from '@/components/FeaturedWorkStrip.vue'
 import { listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController'
 import { useLoginUserStore } from '@/stores/loginUser'
 
@@ -62,6 +63,11 @@ const quickPrompts = [
 
 const prompt = ref('')
 const generationMode = ref<GenerationMode>(CodeGenTypeEnum.VUE_PROJECT)
+const modeChips: { value: GenerationMode; label: string; hint: string }[] = [
+  { value: CodeGenTypeEnum.VUE_PROJECT, label: '多页应用', hint: '完整工程' },
+  { value: CodeGenTypeEnum.MULTI_FILE, label: '轻量网站', hint: '多文件' },
+  { value: CodeGenTypeEnum.HTML, label: '单页站点', hint: '快速验证' },
+]
 const creating = ref(false)
 const promptInput = ref<{ focus: () => void }>()
 const myError = ref('')
@@ -91,6 +97,7 @@ const discovery = ref<'featured' | 'public'>('featured')
 const goodLoading = ref(false)
 
 const isLoggedIn = computed(() => loginUserStore.isLoggedIn)
+const featuredPreview = computed(() => goodApps.value.slice(0, 3))
 
 function useQuickPrompt(text: string) {
   prompt.value = text
@@ -257,79 +264,92 @@ onMounted(() => {
 <template>
   <main class="home-view">
     <section id="create-app" class="hero" aria-labelledby="creation-title">
-      <div class="hero__content">
-        <div class="hero__eyebrow"><ThunderboltOutlined /> 从一个想法开始</div>
-        <h1 id="creation-title" class="hero__title">把想法，变成<span>可用的应用。</span></h1>
-        <p class="hero__subtitle">描述你的需求，让 AI 帮你构建。预览、修改、发布，都在这里。</p>
-        <div class="prompt-panel" :class="{ 'prompt-panel--busy': creating }">
-          <a-textarea
-            ref="promptInput"
-            v-model:value="prompt"
-            class="prompt-panel__input"
-            aria-label="描述你想创建的应用"
-            :auto-size="{ minRows: 3, maxRows: 7 }"
-            :maxlength="2000"
-            :disabled="creating"
-            placeholder="我想创建一个个人摄影网站，支持作品分类、图片展示和在线联系……"
-            @keydown="handlePromptKeydown"
-          />
-          <div class="prompt-panel__footer">
-            <div class="prompt-panel__mode">
-              <span v-if="selectedScenario" class="scenario-label"
-                ><component :is="selectedScenario.icon" />{{ selectedScenario.label }}</span
-              >
-              <a-select
-                v-model:value="generationMode"
-                aria-label="生成模式"
-                :disabled="creating"
-                :options="generationModeOptions"
-              />
+      <div class="hero__inner">
+        <div class="hero__copy">
+          <div class="hero__eyebrow"><span />从提示词到可用的产品</div>
+          <h1 id="creation-title" class="hero__title">把想法，<br /><span>锻造成产品。</span></h1>
+          <p class="hero__subtitle">
+            描述你要做的产品，AppForge 完成页面生成、预览、修改与发布。从第一版到上线，都在同一个工作台。
+          </p>
+
+          <div class="prompt-panel" :class="{ 'prompt-panel--busy': creating }">
+            <div class="prompt-panel__top">
+              <span>DESCRIBE YOUR PRODUCT</span>
+              <span>{{ prompt.length }} / 2000</span>
             </div>
-            <div class="prompt-panel__submit">
-              <span class="prompt-panel__hint">{{
-                prompt.length ? `${prompt.length} / 2000` : 'Ctrl / ⌘ + Enter'
-              }}</span>
+            <a-textarea
+              ref="promptInput"
+              v-model:value="prompt"
+              class="prompt-panel__input"
+              aria-label="描述你想创建的应用"
+              :auto-size="{ minRows: 3, maxRows: 7 }"
+              :maxlength="2000"
+              :disabled="creating"
+              placeholder="帮我做一个科技公司官网，深色背景、橙色强调色，包含产品、客户案例和联系表单。"
+              @keydown="handlePromptKeydown"
+            />
+            <div class="prompt-panel__modes" role="group" aria-label="生成模式">
+              <button
+                v-for="mode in modeChips"
+                :key="mode.value"
+                type="button"
+                class="mode-chip"
+                :class="{ 'mode-chip--active': generationMode === mode.value }"
+                :aria-pressed="generationMode === mode.value"
+                :disabled="creating"
+                @click="generationMode = mode.value"
+              >
+                <strong>{{ mode.label }}</strong><small>{{ mode.hint }}</small>
+              </button>
+            </div>
+            <div class="prompt-panel__footer">
+              <span class="prompt-panel__hint">⌘ / Ctrl + Enter</span>
               <a-button
-                type="primary"
+                class="forge-cta"
                 size="large"
                 :loading="creating"
                 :disabled="!prompt.trim()"
                 aria-label="开始创建应用"
                 @click="handleCreate"
               >
-                {{ creating ? '正在创建' : '开始创建' }}<ArrowUpOutlined v-if="!creating" />
+                {{ creating ? '正在创建' : '开始锻造' }}<ArrowUpOutlined v-if="!creating" />
               </a-button>
             </div>
           </div>
-        </div>
-        <p class="hero__note">
-          {{
-            selectedScenario
-              ? '已填入示例需求，你可以修改后再开始创建'
-              : '还没有具体想法？从下面的场景获取灵感'
-          }}
-        </p>
-        <div class="scenario-grid" aria-label="创作场景">
-          <button
-            v-for="item in quickPrompts"
-            :key="item.label"
-            type="button"
-            class="scenario-card"
-            :class="[
-              `scenario-card--${item.tone}`,
-              { 'scenario-card--selected': selectedScenario?.label === item.label },
-            ]"
-            :aria-pressed="selectedScenario?.label === item.label"
-            :disabled="creating"
-            @click="useQuickPrompt(item.prompt)"
-          >
-            <span class="scenario-card__icon"><component :is="item.icon" /></span>
-            <span class="scenario-card__copy"
-              ><strong>{{ item.label }}</strong
-              ><small>{{ item.description }}</small></span
+
+          <div class="scenario-grid" aria-label="创作场景">
+            <button
+              v-for="item in quickPrompts"
+              :key="item.label"
+              type="button"
+              class="scenario-card"
+              :class="{ 'scenario-card--selected': selectedScenario?.label === item.label }"
+              :aria-pressed="selectedScenario?.label === item.label"
+              :disabled="creating"
+              @click="useQuickPrompt(item.prompt)"
             >
-            <ArrowRightOutlined class="scenario-card__arrow" />
-          </button>
+              <span class="scenario-card__icon"><component :is="item.icon" /></span>
+              <strong>{{ item.label }}</strong>
+              <ArrowRightOutlined class="scenario-card__arrow" />
+            </button>
+          </div>
+
+          <FeaturedWorkStrip
+            v-if="featuredPreview.length"
+            :apps="featuredPreview"
+            @open="openGoodApp"
+          />
+        </div>
+
+        <div class="hero__visual">
+          <HeroArtifact />
+          <div class="hero__proof">
+            <span><b>01</b> 描述需求</span>
+            <i />
+            <span><b>02</b> 生成第一版</span>
+            <i />
+            <span><b>03</b> 发布上线</span>
+          </div>
         </div>
       </div>
     </section>
@@ -365,11 +385,13 @@ onMounted(() => {
       </div>
       <div v-if="!isLoggedIn" class="login-tip">
         <span class="login-tip__icon"><AppstoreOutlined /></span>
-        <div>
-          <h3>你的下一个作品，从这里诞生</h3>
-          <p>登录后保存创作，随时回来继续编辑。</p>
+        <div class="login-tip__copy">
+          <h3>保存你的第一版</h3>
+          <p>登录后保留对话、版本与发布记录，随时回来继续。</p>
         </div>
-        <a-button type="primary" @click="goLogin"><LoginOutlined />登录开启创作</a-button>
+        <button type="button" class="text-cta" @click="goLogin">
+          <LoginOutlined />登录并继续<span>→</span>
+        </button>
       </div>
       <a-spin v-else :spinning="myLoading">
         <a-alert v-if="myError" :message="myError" type="warning" show-icon
@@ -473,393 +495,635 @@ onMounted(() => {
 
 <style scoped>
 .home-view {
-  padding-bottom: 64px;
-  background: #fafbfd;
-}
-.hero {
-  position: relative;
-  padding: 64px 24px 46px;
+  padding-bottom: 84px;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 20% 20%, #eeedff 0, transparent 50%),
-    radial-gradient(ellipse at 85% 70%, #e9f6f8 0, transparent 45%), linear-gradient(#fff, #fafbfd);
+    linear-gradient(180deg, #f7f1e8 0, #f3eee5 520px, #f3eee5 100%);
 }
-.hero__content {
+
+.hero {
   position: relative;
-  max-width: 880px;
-  margin: 0 auto;
-  text-align: center;
+  padding: 70px 32px 48px;
+  overflow: hidden;
 }
+
+.hero::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: '';
+  background:
+    radial-gradient(ellipse at 86% 16%, rgb(242 91 53 / 13%), transparent 38%),
+    radial-gradient(ellipse at 4% 82%, rgb(216 239 122 / 14%), transparent 34%),
+    linear-gradient(rgb(23 21 26 / 3%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(23 21 26 / 3%) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    44px 44px,
+    44px 44px;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 62%, transparent 100%);
+}
+
+.hero__inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(440px, 0.98fr);
+  gap: 62px;
+  align-items: center;
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+}
+
+.hero__copy {
+  min-width: 0;
+  padding-top: 6px;
+}
+
 .hero__eyebrow {
   display: inline-flex;
+  gap: 9px;
   align-items: center;
-  gap: 6px;
-  color: #7161ae;
-  font-size: 12px;
-  padding: 6px 12px;
-  background: #ffffffb3;
-  border: 1px solid #e5e0fa;
-  border-radius: 30px;
-}
-.hero__title {
-  margin: 22px 0 14px;
-  color: #242336;
-  font-size: clamp(30px, 3.4vw, 48px);
-  font-weight: 750;
-  line-height: 1.4;
-  letter-spacing: -1.5px;
-}
-.hero__title span {
-  color: var(--forge-accent);
-}
-.hero__subtitle {
-  margin: 0 0 32px;
   color: var(--forge-muted);
-  font-size: 15px;
-  line-height: 1.8;
+  font-family: var(--forge-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
+
+.hero__eyebrow span {
+  display: inline-block;
+  width: 30px;
+  height: 1px;
+  background: var(--forge-orange);
+}
+
+.hero__title {
+  max-width: 720px;
+  margin: 18px 0 18px;
+  color: var(--forge-ink);
+  font-family: var(--forge-font-display);
+  font-size: clamp(44px, 5.8vw, 76px);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+
+.hero__title span {
+  position: relative;
+  display: inline-block;
+  color: var(--forge-ink);
+}
+
+.hero__title span::after {
+  position: absolute;
+  right: -2px;
+  bottom: 0.04em;
+  left: -2px;
+  z-index: -1;
+  height: 0.3em;
+  content: '';
+  background: var(--forge-orange);
+  opacity: 0.92;
+  transform: skewX(-4deg);
+}
+
+.hero__subtitle {
+  max-width: 585px;
+  margin: 0 0 28px;
+  color: var(--forge-muted);
+  font-size: 14.5px;
+  line-height: 1.85;
+}
+
 .prompt-panel {
-  padding: 22px 22px 16px;
-  text-align: left;
-  background: #fff;
-  border: 1px solid #e2dff1;
-  border-radius: 20px;
-  box-shadow: 0 12px 40px #4d418912;
+  max-width: 720px;
+  padding: 15px 16px 13px;
+  background: var(--forge-card);
+  border: 1px solid #bdb1a1;
+  border-radius: 10px;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 80%) inset,
+    0 18px 50px rgb(80 59 35 / 9%);
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
 }
+
 .prompt-panel:focus-within {
-  border-color: #a398e2;
+  border-color: var(--forge-ink);
   box-shadow:
-    0 12px 40px #4d418918,
-    0 0 0 3px #6654d90b;
+    0 0 0 3px rgb(242 91 53 / 12%),
+    0 18px 50px rgb(80 59 35 / 10%);
 }
+
+.prompt-panel__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 8px;
+  color: var(--forge-muted-2);
+  font-family: var(--forge-font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
 .prompt-panel__input {
-  padding: 0;
+  padding: 2px 2px 8px;
+  color: var(--forge-ink);
   font-size: 16px;
   line-height: 1.8;
+  resize: none;
   background: transparent;
   border: 0;
   box-shadow: none;
-  resize: none;
 }
+
 .prompt-panel__input:hover,
 .prompt-panel__input:focus {
   border: 0;
   box-shadow: none;
 }
+
 .prompt-panel__input::placeholder {
-  color: #9a99a9;
+  color: #9b9286;
 }
-.prompt-panel__footer,
-.prompt-panel__mode,
-.prompt-panel__submit {
+
+.prompt-panel__modes {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
+  gap: 4px;
+  padding: 10px 0 9px;
+  border-top: 1px dashed #d9cebe;
 }
-.prompt-panel__footer {
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 20px;
-}
-.prompt-panel__mode .ant-select {
-  min-width: 150px;
-}
-.prompt-panel__hint {
-  color: #9291a3;
-  font-size: 11px;
-}
-.prompt-panel__submit .ant-btn {
-  font-size: 13px;
-  height: 38px;
-  border-radius: 10px;
-}
-.scenario-label {
+
+.mode-chip {
   display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 8px;
-  background: var(--forge-accent-soft);
-  color: var(--forge-accent);
-  font-size: 12px;
-  border-radius: 7px;
-}
-.hero__note {
-  margin: 16px 0 22px;
-  color: #737083;
-  font-size: 12px;
-}
-.scenario-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-.scenario-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 6px;
+  align-items: baseline;
+  padding: 6px 9px;
+  color: var(--forge-muted);
   text-align: left;
-  padding: 16px 12px;
-  background: #ffffffb3;
-  border: 1px solid #e9e8f0;
-  border-radius: 12px;
   cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
   transition:
-    transform 0.2s,
-    border-color 0.2s;
+    color 0.18s,
+    background-color 0.18s,
+    border-color 0.18s;
 }
-.scenario-card:hover {
-  transform: translateY(-3px);
-  border-color: #c5bce8;
-}
-.scenario-card--selected {
-  border-color: var(--forge-accent);
-  background: #f5f2ff;
-}
-.scenario-card__icon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  color: #8064cc;
-  background: #f0eaff;
-  font-size: 18px;
-}
-.scenario-card--blue .scenario-card__icon {
-  color: #4e83c3;
-  background: #eaf2fd;
-}
-.scenario-card--amber .scenario-card__icon {
-  color: #ba8a4f;
-  background: #fbf1df;
-}
-.scenario-card--mint .scenario-card__icon {
-  color: #41978f;
-  background: #e6f5ef;
-}
-.scenario-card__copy {
-  min-width: 0;
-}
-.scenario-card__copy strong {
-  display: block;
-  color: #3c394f;
-  font-size: 13px;
+
+.mode-chip strong {
+  font-size: 11px;
   font-weight: 600;
-}
-.scenario-card__copy small {
-  display: block;
-  margin-top: 5px;
-  color: #787284;
-  font-size: 10px;
   white-space: nowrap;
 }
-.scenario-card__arrow {
-  margin-left: auto;
-  color: #b4afc4;
+
+.mode-chip small {
+  color: var(--forge-muted-2);
+  font-size: 9px;
+}
+
+.mode-chip:hover {
+  color: var(--forge-ink);
+  background: #f5efe6;
+}
+
+.mode-chip--active {
+  color: var(--forge-ink);
+  background: #f4e9db;
+  border-color: #d8c8b2;
+}
+
+.mode-chip--active small {
+  color: var(--forge-orange-deep);
+}
+
+.prompt-panel__footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.prompt-panel__hint {
+  color: var(--forge-muted-2);
+  font-family: var(--forge-font-mono);
+  font-size: 8px;
+}
+
+.prompt-panel__footer :deep(.forge-cta) {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  height: 40px;
+  padding: 0 17px;
+  color: var(--forge-ink);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--forge-orange);
+  border: 1px solid #d94a27;
+  border-radius: 5px;
+  box-shadow: inset 0 -2px 0 rgb(23 21 26 / 15%);
+}
+
+.prompt-panel__footer :deep(.forge-cta:hover) {
+  color: var(--forge-ink) !important;
+  background: #ff6d48 !important;
+  border-color: #ff6d48 !important;
+}
+
+.prompt-panel__footer :deep(.forge-cta:disabled) {
+  color: #8f877b;
+  background: #e7ded1;
+  border-color: #d8ccbb;
+  box-shadow: none;
+}
+
+.scenario-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 720px;
+  margin-top: 14px;
+}
+
+.scenario-card {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 10px;
+  color: var(--forge-muted);
+  cursor: pointer;
+  background: rgb(255 253 249 / 54%);
+  border: 1px solid #d9cebe;
+  border-radius: 4px;
+  transition:
+    color 0.18s,
+    background-color 0.18s,
+    border-color 0.18s;
+}
+
+.scenario-card:hover,
+.scenario-card--selected {
+  color: var(--forge-ink);
+  background: var(--forge-card);
+  border-color: var(--forge-ink);
+}
+
+.scenario-card__icon {
+  display: inline-flex;
+  color: var(--forge-orange-deep);
+  font-size: 12px;
+}
+
+.scenario-card strong {
   font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
 }
+
+.scenario-card__arrow {
+  color: var(--forge-muted-2);
+  font-size: 8px;
+}
+
+.hero__visual {
+  min-width: 0;
+}
+
+.hero__proof {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  color: var(--forge-muted-2);
+  font-family: var(--forge-font-mono);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+}
+
+.hero__proof b {
+  margin-right: 4px;
+  color: var(--forge-orange-deep);
+  font-weight: 600;
+}
+
+.hero__proof i {
+  width: 18px;
+  height: 1px;
+  background: #cfc2b1;
+}
+
 .section {
-  max-width: 1280px;
+  position: relative;
+  max-width: 1360px;
   margin: 0 auto;
-  padding: 32px 32px 12px;
-  scroll-margin-top: 80px;
+  padding: 44px 32px 14px;
+  scroll-margin-top: 90px;
 }
+
+.section--mine {
+  padding-top: 24px;
+}
+
 .section--featured {
-  margin-top: 30px;
-  padding-top: 36px;
-  border-top: 1px solid var(--forge-border);
+  margin-top: 34px;
+  padding-top: 44px;
+  border-top: 1px solid #d8ccbb;
 }
+
 .section__head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  gap: 18px;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
   margin-bottom: 22px;
 }
+
 .section__eyebrow {
-  color: #81768f;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1.7px;
   margin-bottom: 8px;
+  color: var(--forge-orange-deep);
+  font-family: var(--forge-font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
 }
+
 .section__title {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   margin: 0;
-  color: var(--forge-text);
-  font-size: 23px;
-  font-weight: 650;
+  color: var(--forge-ink);
+  font-family: var(--forge-font-display);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
+
 .section__count {
-  font-size: 11px;
   padding: 2px 7px;
-  background: #eceaf4;
-  color: #7a718f;
-  border-radius: 6px;
+  color: var(--forge-muted);
+  font-family: var(--forge-font-mono);
+  font-size: 9px;
+  font-weight: 400;
+  background: #e8ddcd;
+  border-radius: 3px;
 }
+
 .section__desc {
   margin: 7px 0 0;
-  color: #787284;
+  color: var(--forge-muted);
   font-size: 12px;
 }
+
 .section__filters,
 .discovery-filters {
   display: flex;
   flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
-  gap: 12px;
   margin-bottom: 20px;
 }
+
 .section__search {
-  width: 256px;
+  width: 260px;
 }
+
 .tag-filter {
-  width: 214px;
+  width: 220px;
 }
+
 .discovery-filters {
   justify-content: space-between;
 }
+
 .app-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
+  gap: 18px;
 }
+
+
 .empty-state {
-  padding: 40px 20px;
-  border: 1px dashed #e3dfed;
-  border-radius: 14px;
-  background: #fff;
+  padding: 44px 20px;
+  background: var(--forge-card);
+  border: 1px dashed #cfc2b1;
+  border-radius: 8px;
 }
+
 .loading-space {
   min-height: 180px;
 }
+
 .pagination {
   display: flex;
   justify-content: center;
-  margin-top: 28px;
+  margin-top: 30px;
 }
+
 .login-tip {
   display: flex;
   flex-wrap: wrap;
+  gap: 14px;
   align-items: center;
-  gap: 18px;
-  padding: 28px;
-  background: #fff;
-  border: 1px solid var(--forge-border);
-  border-radius: 14px;
+  padding: 15px 18px;
+  background: rgb(255 253 249 / 62%);
+  border: 1px solid #d8ccbb;
+  border-radius: 8px;
 }
+
 .login-tip__icon {
   display: grid;
+  flex: none;
   place-items: center;
-  width: 48px;
-  height: 48px;
-  color: var(--forge-accent);
-  background: var(--forge-accent-soft);
-  border-radius: 14px;
-  font-size: 23px;
+  width: 38px;
+  height: 38px;
+  color: var(--forge-ink);
+  font-size: 17px;
+  background: var(--forge-lime);
+  border-radius: 8px;
 }
-.login-tip h3 {
+
+.login-tip__copy h3 {
   margin: 0;
-  color: #454054;
-  font-size: 15px;
+  color: var(--forge-ink);
+  font-size: 13px;
   font-weight: 600;
 }
-.login-tip p {
-  margin: 6px 0 0;
-  color: #9690a3;
+
+.login-tip__copy p {
+  margin: 3px 0 0;
+  color: var(--forge-muted);
+  font-size: 11px;
+}
+
+.text-cta {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 0;
+  margin-left: auto;
+  color: var(--forge-orange-deep);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid currentcolor;
+}
+
+.text-cta span {
   font-size: 12px;
 }
-.login-tip .ant-btn {
-  margin-left: auto;
+
+.text-cta:hover {
+  color: var(--forge-ink);
 }
-@media (max-width: 1000px) {
-  .scenario-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+@media (max-width: 1120px) {
+  .hero__inner {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.84fr);
+    gap: 34px;
   }
+
+  .hero {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero__inner {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .hero {
+    padding-top: 48px;
+  }
+
+  .hero__visual {
+    max-width: 660px;
+    margin: 0 auto;
+  }
+
+  .hero__proof {
+    margin-bottom: 6px;
+  }
+
   .app-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
 @media (max-width: 600px) {
   .hero {
-    padding: 38px 16px 26px;
+    padding: 38px 16px 30px;
   }
+
   .hero__title {
-    font-size: 30px;
-    letter-spacing: -1px;
+    margin-top: 15px;
+    font-size: clamp(38px, 12vw, 50px);
+    letter-spacing: -0.04em;
   }
-  .hero__title span {
-    display: block;
-  }
+
   .hero__subtitle {
+    margin-bottom: 20px;
     font-size: 13px;
-    margin-bottom: 22px;
   }
+
   .prompt-panel {
-    padding: 16px;
-    border-radius: 16px;
+    padding: 12px;
   }
+
   .prompt-panel__input {
     font-size: 14px;
   }
+
+  .mode-chip {
+    flex: 1;
+    justify-content: center;
+    padding: 6px 5px;
+  }
+
+  .mode-chip small {
+    display: none;
+  }
+
   .prompt-panel__hint {
     display: none;
   }
-  .prompt-panel__mode {
-    gap: 6px;
+
+  .prompt-panel__footer {
+    justify-content: flex-end;
   }
-  .prompt-panel__mode .ant-select {
-    min-width: 132px;
+
+  .prompt-panel__footer :deep(.forge-cta) {
+    width: 100%;
+    justify-content: center;
   }
-  .scenario-label {
-    display: none;
+
+  .scenario-grid {
+    gap: 4px;
   }
+
   .scenario-card {
-    padding: 12px 10px;
-    gap: 8px;
+    flex: 1;
+    justify-content: center;
+    padding: 7px 5px;
   }
+
   .scenario-card__arrow {
     display: none;
   }
-  .scenario-card__copy small {
-    font-size: 9px;
+
+  .hero__proof {
+    gap: 6px;
+    justify-content: flex-start;
+    font-size: 6px;
   }
-  .scenario-card__icon {
-    width: 30px;
-    height: 30px;
-    font-size: 15px;
+
+  .hero__proof i {
+    width: 10px;
   }
+
   .section {
-    padding: 28px 16px 8px;
+    padding: 32px 16px 10px;
   }
+
+  .section--mine {
+    padding-top: 12px;
+  }
+
   .section__title {
-    font-size: 21px;
+    font-size: 25px;
   }
-  .section__search {
-    width: 100%;
-  }
+
+  .section__search,
   .section__filters .tag-filter,
   .discovery-filters .tag-filter {
     width: 100%;
   }
+
   .app-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
+    gap: 14px;
   }
+
+
   .login-tip {
-    padding: 20px;
-    gap: 12px;
+    padding: 13px;
   }
-  .login-tip .ant-btn {
-    margin-left: 60px;
+
+  .text-cta {
+    margin-left: 52px;
   }
 }
 </style>

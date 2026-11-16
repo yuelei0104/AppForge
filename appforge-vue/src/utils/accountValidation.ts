@@ -3,7 +3,10 @@ export function validateNickname(value: string): string {
   if (
     Array.from(nickname).length < 2 ||
     Array.from(nickname).length > 24 ||
-    /[\u0000-\u001f\u007f-\u009f]/.test(nickname)
+    Array.from(nickname).some((char) => {
+      const code = char.charCodeAt(0)
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f)
+    })
   ) {
     throw new Error('昵称需为 2～24 个字符，不能包含换行等控制字符')
   }
