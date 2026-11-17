@@ -158,7 +158,8 @@ public class AppCoverWorker implements AutoCloseable {
                     id,
                     attempt.appId(),
                     attempt.version(),
-                    code);
+                    code,
+                    e);
         } finally {
             if (timeout != null) timeout.cancel(false);
             if (heartbeat != null) heartbeat.cancel(false);

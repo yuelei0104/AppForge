@@ -1,7 +1,9 @@
 package com.yuelei.appforge.config;
 
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.annotation.Resource;
 import org.springframework.cache.CacheManager;
@@ -22,11 +24,25 @@ public class RedisCacheManagerConfig {
     @Resource
     private RedisConnectionFactory redisConnectionFactory;
 
-    @Bean
-    public CacheManager cacheManager() {
-        // 配置 ObjectMapper 支持 Java8 时间类型
+    /**
+     * 缓存专用的 ObjectMapper。
+     * <p>
+     * 必须开启默认类型信息（{@code @class}），否则缓存反序列化会得到
+     * LinkedHashMap，控制器代理按 BaseResponse 强转时会抛 ClassCastException。
+     */
+    static ObjectMapper cacheObjectMapper() {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.activateDefaultTyping(
+            LaissezFaireSubTypeValidator.instance,
+            ObjectMapper.DefaultTyping.NON_FINAL,
+            JsonTypeInfo.As.PROPERTY);
+        return objectMapper;
+    }
+
+    @Bean
+    public CacheManager cacheManager() {
+        ObjectMapper objectMapper = cacheObjectMapper();
 
         // 默认配置
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
@@ -42,7 +58,7 @@ public class RedisCacheManagerConfig {
         return RedisCacheManager.builder(redisConnectionFactory)
             .cacheDefaults(defaultConfig)
             // 针对 good_app_page 配置5分钟过期
-            .withCacheConfiguration("good_app_page",
+            .withCacheConfiguration("good_app_page_v3",
                 defaultConfig.entryTtl(Duration.ofMinutes(5)))
             .build();
     }

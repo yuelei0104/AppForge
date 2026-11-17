@@ -2,10 +2,14 @@ package com.yuelei.appforge.workspace;
 
 import cn.hutool.json.JSONUtil;
 
+import com.yuelei.appforge.controller.AiModelMetricsCollector;
 import com.yuelei.appforge.core.parser.MultiFileCodeParser;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
+import com.yuelei.appforge.monitor.MonitorContext;
+import com.yuelei.appforge.monitor.MonitorContextHolder;
 
+import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -19,6 +23,7 @@ import java.net.URI;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,6 +47,9 @@ public class CancellableCodeStream {
     private String reasoningEffort;
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
+
+    @Resource
+    private AiModelMetricsCollector aiModelMetricsCollector;
 
     private final HttpClient client =
             HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
@@ -143,6 +151,28 @@ public class CancellableCodeStream {
     }
 
     private Flux<String> request(String message, String resource, String stage) {
+        return Flux.defer(
+                () -> {
+                    MonitorContext context = MonitorContextHolder.getContext();
+                    Instant startedAt = Instant.now();
+                    if (context != null && aiModelMetricsCollector != null) {
+                        aiModelMetricsCollector.recordRequest(
+                                context.getUserId(), context.getAppId(), model, "started");
+                    }
+                    return request0(message, resource, stage)
+                            .doOnComplete(
+                                    () -> recordModelResult(context, startedAt, "success", null))
+                            .doOnError(
+                                    error ->
+                                            recordModelResult(
+                                                    context,
+                                                    startedAt,
+                                                    "error",
+                                                    error.getMessage()));
+                });
+    }
+
+    private Flux<String> request0(String message, String resource, String stage) {
         return Flux.defer(
                 () -> {
                     ThrowUtils.throwIf(
@@ -335,6 +365,25 @@ public class CancellableCodeStream {
     }
 
     /** 建连超时通常是一次网络抖动；请求尚未发出，重试一次不会重复生成。 */
+    private void recordModelResult(
+            MonitorContext context, Instant startedAt, String status, String errorMessage) {
+        if (context == null || aiModelMetricsCollector == null) return;
+        aiModelMetricsCollector.recordRequest(
+                context.getUserId(), context.getAppId(), model, status);
+        if ("error".equals(status)) {
+            aiModelMetricsCollector.recordError(
+                    context.getUserId(),
+                    context.getAppId(),
+                    model,
+                    errorMessage == null ? "unknown" : errorMessage);
+        }
+        aiModelMetricsCollector.recordResponseTime(
+                context.getUserId(),
+                context.getAppId(),
+                model,
+                Duration.between(startedAt, Instant.now()));
+    }
+
     private CompletableFuture<HttpResponse<InputStream>> sendWithConnectRetry(HttpRequest request) {
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
                 .exceptionallyCompose(

@@ -6,6 +6,8 @@ import com.yuelei.appforge.core.parser.CodeParserExecutor;
 import com.yuelei.appforge.exception.*;
 import com.yuelei.appforge.model.entity.*;
 import com.yuelei.appforge.model.enums.CodeGenTypeEnum;
+import com.yuelei.appforge.monitor.MonitorContext;
+import com.yuelei.appforge.monitor.MonitorContextHolder;
 import com.yuelei.appforge.service.AiResponseCacheService;
 import com.yuelei.appforge.workspace.vue.*;
 
@@ -89,14 +91,29 @@ public class AppGenerationService {
             Consumer<GenerationProgress> progress,
             Consumer<FileChangeEvent> onFileChange) {
         return Flux.defer(
-                        () ->
-                                begin(
-                                        app,
-                                        message,
-                                        onStarted,
-                                        userMessageId,
-                                        progress,
-                                        onFileChange))
+                        () -> {
+                            // 与真正的模型调用处在同一条 boundedElastic 链路上，避免在 AppServiceImpl
+                            // 设置后被 generation.generate(...).subscribeOn(...) 切线程丢失。
+                            MonitorContextHolder.setContext(
+                                    MonitorContext.builder()
+                                            .userId(String.valueOf(app.getUserId()))
+                                            .appId(String.valueOf(app.getId()))
+                                            .build());
+                            try {
+                                return begin(
+                                                app,
+                                                message,
+                                                onStarted,
+                                                userMessageId,
+                                                progress,
+                                                onFileChange)
+                                        .doFinally(
+                                                signal -> MonitorContextHolder.clearContext());
+                            } catch (RuntimeException error) {
+                                MonitorContextHolder.clearContext();
+                                throw error;
+                            }
+                        })
                 .subscribeOn(Schedulers.boundedElastic());
     }
 

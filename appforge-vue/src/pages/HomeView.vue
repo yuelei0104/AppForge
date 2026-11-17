@@ -334,11 +334,6 @@ onMounted(() => {
             </button>
           </div>
 
-          <FeaturedWorkStrip
-            v-if="featuredPreview.length"
-            :apps="featuredPreview"
-            @open="openGoodApp"
-          />
         </div>
 
         <div class="hero__visual">
@@ -351,6 +346,10 @@ onMounted(() => {
             <span><b>03</b> 发布上线</span>
           </div>
         </div>
+      </div>
+
+      <div v-if="featuredPreview.length" class="hero__featured">
+        <FeaturedWorkStrip :apps="featuredPreview" @open="openGoodApp" />
       </div>
     </section>
 
@@ -503,7 +502,7 @@ onMounted(() => {
 
 .hero {
   position: relative;
-  padding: 70px 32px 48px;
+  padding: 32px 32px 38px;
   overflow: hidden;
 }
 
@@ -530,16 +529,17 @@ onMounted(() => {
   z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1.02fr) minmax(440px, 0.98fr);
-  gap: 62px;
-  align-items: center;
+  gap: 56px;
+  align-items: stretch;
   width: 100%;
   max-width: 1360px;
   margin: 0 auto;
 }
 
 .hero__copy {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  padding-top: 6px;
 }
 
 .hero__eyebrow {
@@ -599,6 +599,8 @@ onMounted(() => {
 }
 
 .prompt-panel {
+  width: 100%;
+  min-width: 0;
   max-width: 720px;
   padding: 15px 16px 13px;
   background: var(--forge-card);
@@ -631,6 +633,8 @@ onMounted(() => {
 }
 
 .prompt-panel__input {
+  width: 100%;
+  min-width: 0;
   padding: 2px 2px 8px;
   color: var(--forge-ink);
   font-size: 16px;
@@ -748,7 +752,8 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 6px;
   max-width: 720px;
-  margin-top: 14px;
+  padding-top: 14px;
+  margin-top: auto;
 }
 
 .scenario-card {
@@ -792,7 +797,25 @@ onMounted(() => {
 }
 
 .hero__visual {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+}
+
+.hero__visual :deep(.artifact) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.hero__visual :deep(.artifact__browser) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.hero__visual :deep(.artifact__page) {
+  flex: 1;
 }
 
 .hero__proof {
@@ -800,11 +823,24 @@ onMounted(() => {
   gap: 10px;
   align-items: center;
   justify-content: center;
-  margin-top: 4px;
+  margin-top: 10px;
   color: var(--forge-muted-2);
   font-family: var(--forge-font-mono);
   font-size: 7px;
   letter-spacing: 0.06em;
+}
+
+.hero__featured {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1360px;
+  padding: 0 32px;
+  margin: 30px auto 0;
+}
+
+.hero__featured :deep(.work-strip) {
+  margin-top: 0;
 }
 
 .hero__proof b {
@@ -997,6 +1033,11 @@ onMounted(() => {
     padding-right: 24px;
     padding-left: 24px;
   }
+
+  .hero__featured {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
 }
 
 @media (max-width: 900px) {
@@ -1014,6 +1055,12 @@ onMounted(() => {
     margin: 0 auto;
   }
 
+  .hero__featured {
+    padding-right: 24px;
+    padding-left: 24px;
+    margin-top: 24px;
+  }
+
   .hero__proof {
     margin-bottom: 6px;
   }
@@ -1025,7 +1072,12 @@ onMounted(() => {
 
 @media (max-width: 600px) {
   .hero {
-    padding: 38px 16px 30px;
+    padding: 32px 16px 28px;
+  }
+
+  .hero__featured {
+    padding: 0 16px;
+    margin-top: 20px;
   }
 
   .hero__title {
