@@ -4,9 +4,9 @@
 
 AppForge 是一个基于 Java 与 Vue 的 AI 应用生成平台。用户描述需求后，在同一个工作台完成代码生成、页面预览、多轮修改、版本对比、源码下载和发布。
 
-> 当前说明对应 `feat/frontend-creation-workspace` 分支，包含 2026-11-16 提交的 Forge 界面改版。该分支尚未合并到 `main`，体验本 README 所述界面请检出此分支。
+> 当前说明对应 `feat/frontend-creation-workspace` 分支，包含 Forge 界面和微服务迁移代码。该分支尚未合并到 `main`。仓库同时保留单体与微服务工程；微服务仍处于拆分和联调阶段，启动方式见下文。
 
-[快速启动](#快速启动) · [功能说明](#功能说明) · [架构与技术栈](#架构与技术栈) · [测试与验证](#测试与验证) · [文档导航](#文档导航)
+[选择运行方式](#选择运行方式) · [快速启动](#快速启动) · [微服务指南](appforge-microservices/README.md) · [功能说明](#功能说明) · [测试与验证](#测试与验证) · [文档导航](#文档导航)
 
 ## 界面预览
 
@@ -37,7 +37,7 @@ AppForge 是一个基于 Java 与 Vue 的 AI 应用生成平台。用户描述�
 | 作品发现 | 私有/公开可见性、名称与标签搜索、精选申请、管理员审核与置顶 |
 | 账号 | 注册昵称、个人昵称修改、原密码校验改密、管理员协助找回密码 |
 | 附件 | 图片、文本与文档上传；文档文本提取；本地回退与 COS 存储接入 |
-| 自动封面 | 按版本排队截图、有限重试、状态查询、手动重试和自定义封面；需单独启用 |
+| 自动封面 | 按版本排队截图、有限重试、状态查询、手动重试和自定义封面；需配置 Chrome、COS 与任务表 |
 | 输入与成本 | 输入护栏、路由缓存、符合条件的首次生成结果缓存、普通 API 压缩 |
 
 ### 三种生成模式
@@ -64,6 +64,7 @@ Vue 工程通过受限文件工具读写源码，再由平台固定的 Docker �
 | --- | --- |
 | 前端 | Vue 3、TypeScript、Vite、Vue Router、Pinia、Ant Design Vue；创作工作台与状态反馈 |
 | Web 与业务 | Java 21、Spring Boot 3.5.16、Spring MVC/SSE；认证、应用、版本、发布与访问控制 |
+| 微服务改造 | Maven 多模块、Dubbo 3.3.0、Nacos 注册、Higress HTTP 网关；当前拆分边界见下文 |
 | AI | LangChain4j 1.11.11 核心、OpenAI 兼容模型接口、工具调用、记忆与输入护栏 |
 | 数据 | MySQL、MyBatis-Flex、Redis、Spring Session、Caffeine；业务持久化、会话、记忆与缓存 |
 | 工程构建 | Docker；固定安装/构建命令、任务目录挂载和资源限制 |
@@ -71,13 +72,26 @@ Vue 工程通过受限文件工具读写源码，再由平台固定的 Docker �
 
 生成链路为：前端提交需求并取得一次性 ticket → 后端校验身份与应用权限 → 模型流式生成或工具写入 → 校验与按需构建 → 保存版本 → 更新预览。发布绑定一个成功版本，预览版本与已发布版本独立。
 
-当前面向**单后端实例**。任务认领、停止和重启恢复包含本地运行状态；增加实例前需补充任务路由和跨节点停止机制。
+### 当前服务划分
+
+| 模块 | 当前实现 |
+| --- | --- |
+| `user` | 用户服务，HTTP 8124、Triple 50051；注册、登录、昵称和密码修改 |
+| `app` | 应用服务，HTTP 8125、Triple 50053；生成、对话、附件、版本、发布和封面任务 |
+| `screenshot` | 截图服务，HTTP 8127、Triple 50052；提供截图上传的内部接口 |
+| `ai` | 模型、工具、护栏和监控依赖，由 app 进程加载，当前不是独立 AI 服务 |
+| `common` / `model` / `client` | 公共能力、数据模型和内部服务契约 |
+
+微服务工程已提供独立启动类与 Dubbo 服务实现；目前仍共享数据库和 Redis Session，app 也保留部分本地用户逻辑及封面渲染。它不是已经完成独立分库、全远程调用和分布式任务调度的最终形态。
+
+生成任务仍包含进程内运行状态。拆分进程不等于支持应用服务任意水平扩容，增加 app 实例前需补充任务路由、跨节点停止与运行文件访问机制。
 
 ## 项目结构
 
 | 路径 | 内容 |
 | --- | --- |
-| `appforge-backend/` | 可独立运行的 Spring Boot JAR 工程、Maven Wrapper 与后端测试 |
+| `appforge-backend/` | 单体 Spring Boot 工程、Maven Wrapper 与现有后端回归测试 |
+| `appforge-microservices/` | 微服务聚合父工程；common、model、client、ai、user、app、screenshot 七个子模块 |
 | `appforge-vue/` | 实际 Vue 前端、API 客户端、页面、组件与 Vitest 测试 |
 | `sql/create_table.sql` | 全新数据库初始化脚本 |
 | `sql/migrations/` | 已有数据库的分阶段升级脚本 |
@@ -86,11 +100,24 @@ Vue 工程通过受限文件工具读写源码，再由平台固定的 Docker �
 | `.github/workflows/` | Vue 工程构建及相关回归验证流水线 |
 | `LICENSES/`、`THIRD_PARTY_NOTICES.md` | 随附第三方工具的许可与声明 |
 
-Git 在仓库根目录管理；Maven 命令在 `appforge-backend` 执行，npm 命令在 `appforge-vue` 执行。生成目录与附件位于运行时 `tmp/` 下，请与数据库成套备份。
+Git 在仓库根目录管理。单体 Maven 命令在 `appforge-backend` 执行；微服务聚合构建在 `appforge-microservices` 执行；npm 命令在 `appforge-vue` 执行。生成目录与附件位于运行时 `tmp/` 下，请固定工作目录并与数据库成套备份。
+
+## 选择运行方式
+
+| 方式 | 后端入口 | 前端 `/api` 代理目标 | 适用场景 |
+| --- | --- | --- | --- |
+| 单体 | `AppForgeApplication`，8123 | `http://localhost:8123` | 使用原有工程运行完整产品功能 |
+| 微服务 | user 8124、app 8125；截图能力另启 screenshot 8127 | `http://localhost:18080`，需先配置 Higress | 服务拆分、Dubbo/Nacos 与网关联调 |
+
+下面的快速启动以**单体方式**为例；微服务的配置、启动类、端口、路由和验证步骤见 [微服务运行指南](appforge-microservices/README.md)。
+
+当前提交中的 Vite 代理仍指向 `8123`。只启动微服务、却不修改代理，不会自动切换到 Higress。示例中的 `8001` 是 Higress 控制台，`18080` 才是映射到宿主机的 HTTP 网关入口。
+
+单体登录态和微服务登录态也不要默认混用。两套代码的用户模型包名不同，切换后应退出并重新登录；需要并行运行时，隔离两套环境的 Session namespace。
 
 ## 快速启动
 
-以下以 Windows PowerShell 为例。已有项目先保存本地改动，再更新分支。
+以下以 Windows PowerShell 和单体后端为例。已有项目先保存本地改动，再更新分支。微服务不要直接照搬本节的后端端口，改用 [专用指南](appforge-microservices/README.md)。
 
 ### 1. 获取代码并准备环境
 
@@ -102,7 +129,7 @@ cd AppForge
 | 组件 | 要求 |
 | --- | --- |
 | JDK | 21 |
-| Maven | 使用后端自带 Wrapper，固定 3.9.9 |
+| Maven | 单体使用自带 Wrapper，固定 3.9.9；微服务当前使用已安装的 Maven |
 | Node.js | `^22.18.0` 或 `>=24.12.0`，以 `appforge-vue/package.json` 为准 |
 | 数据库 | MySQL 8.x |
 | Redis | 会话、记忆、缓存和密码重置码使用；测试流水线使用 Redis 7.4 |
@@ -175,10 +202,17 @@ logging:
 cos:
   client:
     host: https://your-bucket.cos.ap-shanghai.myqcloud.com
-    secret-id: ${TENCENT_CLOUD_SECRET_ID:local-disabled}
-    secret-key: ${TENCENT_CLOUD_SECRET_KEY:local-disabled}
+    secret-id: ${TENCENT_COS_SECRET_ID:local-disabled}
+    secret-key: ${TENCENT_COS_SECRET_KEY:local-disabled}
     region: ap-shanghai
     bucket: ${COS_BUCKET:local-disabled}
+
+# 先验证生成主流程，准备好 Chrome、COS 和任务表后再启用封面。
+app:
+  cover:
+    enabled: false
+    base-url: http://127.0.0.1:8123/api
+    public-base-url: http://localhost:8123/api
 ```
 
 在**启动后端的同一终端**设置对应变量；使用自己的值替换占位文字：
@@ -194,7 +228,7 @@ $env:APPFORGE_MODEL_NAME = "你的账户实际可用的模型名称"
 
 模型 Key 只留在后端，不要放进 `VITE_*`、前端代码、截图或提交记录。各模型入口也可独立配置不同模型，接口、名称与参数兼容性需按实际供应商确认。
 
-自动封面默认关闭。当前 `CosClientConfig` 会创建 COS 客户端，上面的本地占位只用于未启用云存储的调试，不具备上传能力；真实上传须在本机配置 `cos.client.host`、`secret-id`、`secret-key`、`region`、`bucket`。启用截图还需 Chrome、对应数据库表和可访问的后端地址，见 [封面启用与验证](docs/08-app-cover.md)。
+当前单体的仓库配置已设置 `app.cover.enabled: true`，并包含开发机驱动路径；上面的本机模板显式关闭封面，避免沿用其他机器的环境。`CosClientConfig` 仍会创建 COS 客户端，本地占位只用于未使用云存储的调试，不具备上传能力。真实上传须配置 `cos.client.host`、`secret-id`、`secret-key`、`region`、`bucket`；启用截图还需 Chrome、适合本机的驱动、对应数据库表和可访问的后端地址，见 [封面启用与验证](docs/08-app-cover.md)。专题文档中的默认值描述需以实际加载的 YAML 为准。
 
 ### 4. 启动后端
 
@@ -238,21 +272,29 @@ npm run dev
 
 ## 构建与部署
 
-前端生产构建：
+两种后端使用同一个前端。前端生产构建：
 
 ```powershell
 cd appforge-vue
 npm run build
 ```
 
-后端打包与运行，在后端目录执行：
+单体后端打包与运行，在 `appforge-backend` 目录执行：
 
 ```powershell
 .\mvnw.cmd clean package
 java -jar .\target\appforge-backend-0.1.0-SNAPSHOT.jar
 ```
 
-前端 `dist/` 交给静态服务器托管，并将 `/api` 反向代理到后端；为 Vue 页面路由配置入口回退。SSE 路径应关闭代理缓冲并设置合适的读取超时。应用发布链接仍通过后端资源接口访问，不要直接公开 `tmp/`，否则会绕过私有、下线和删除校验。
+微服务在 `appforge-microservices` 目录构建，各服务分别生成 JAR：
+
+```powershell
+mvn -DskipTests install
+```
+
+先为各服务补齐本机配置，再按 [微服务指南](appforge-microservices/README.md) 启动 user、app 和按需使用的 screenshot。内部依赖模块不作为独立服务启动。
+
+前端 `dist/` 交给静态服务器托管，并将 `/api` 反向代理到选定的单体或 Higress 网关；为 Vue 页面路由配置入口回退。SSE 路径应关闭代理缓冲并设置合适的读取超时。应用发布链接仍通过后端资源接口访问，不要直接公开 `tmp/`，否则会绕过私有、下线和删除校验。
 
 本仓库不提供完整的平台一键 Compose 部署。Vue 工程生成所用的 Docker 构建容器，与平台本身的部署是两件事；后端运行环境必须能调用 Docker 并挂载任务目录。生产运行另需配置 HTTPS、持久化备份、密钥管理与资源配额。
 
@@ -271,6 +313,8 @@ npm run build
 ```powershell
 .\mvnw.cmd "-Dtest=AppCreationModeTest,AppWorkspaceTest,AppServiceAccessTest,ChatHistoryIntegrationTest,ChatConversationExtensionsTest,CodeParserTest" test
 ```
+
+现有后端测试与下述 CI 主要覆盖 `appforge-backend` 单体。微服务的 Maven 构建、服务注册、网关转发、跨服务 Session 和真实模型生成，需要单独验证，当前文档不将其标记为已通过。
 
 仓库提供 [Vue runtime verification 流水线](https://github.com/yuelei0104/AppForge/actions/workflows/vue-runtime-verification.yml)，包含前端测试/构建、选定后端回归、真实 Docker 构建及 Chrome/MySQL/Redis 专项验证。各次执行结果以 Actions 页面为准；工作流的 push 触发分支有限，也可从 Actions 手动运行。
 
@@ -292,17 +336,22 @@ npm run build
 
 | 现象 | 检查方法 |
 | --- | --- |
-| `8123` 已被占用 | 停止旧后端或调整端口，并同步前端代理与截图地址；不要同时从 IDEA 和命令行启动 |
+| HTTP 端口已被占用 | 单体默认 8123，微服务为 8124/8125/8127；停止同一服务的旧进程，或调整配置并同步代理与网关 |
 | Docker 找不到 Linux engine / named pipe | 启动 Docker Desktop，等待 `docker info` 的 Server 正常后再生成 Vue 工程 |
 | 表或列不存在 | 核对数据库名和已经执行的迁移，不要用重复初始化代替升级 |
 | 精选与公开案例为空 | 先生成并公开作品；精选还需管理员审核；搜索条件也会过滤结果 |
 | 模型返回 401、无权限或截断 | 检查实际运行进程的 Key、模型名称、余额与输出限制；保留旧版本后调整需求重试 |
 | 封面一直是占位图 | 核对截图开关、Chrome、COS 权限、任务状态及后端访问地址 |
-| 登录后仍提示未登录 | 核对 Redis 与 Cookie，统一访问主机名并检查代理/跨域配置 |
+| 登录后仍提示未登录 | 核对 Redis 与 Cookie；微服务还需一致的 Redis 逻辑库、Session namespace 与序列化器 |
+| 微服务前端提示网络异常 | 仓库 Vite 默认目标仍是 8123，改为已配置的 Higress 18080 并重启；检查绝对 API 地址覆盖 |
+| Higress 返回 503 / upstream connect error | 网关已收到请求，但连接上游失败；核对容器可达地址和 HTTP 8124/8125，不要填 Triple 端口 |
+| 微服务找回密码 404 | 两条 reset 接口目前在 app，需比 `/api/user` 更优先的精确路由，见微服务指南 |
+| GitHub 拒绝包含密钥的推送 | 将密钥改为环境变量或被忽略的本机配置，并从所有待推送提交中移除明文；不能只新增删除提交 |
 
 ## 当前边界
 
 - 生成目标是网页及受限 Vue 前端工程，不自动生成并上线任意 Java 后端业务系统。
+- 微服务处于迁移联调阶段；AI 尚未独立成进程，用户读取与封面调用仍有本地实现，当前共享数据库。
 - 多实例统一调度、跨节点停止、用户计费与完善的全平台成本配额仍需建设。
 - 现有生成结果缓存按提示词与生成类型共享，且只覆盖符合条件的首次创建；隐私和近似命中边界见 [成本优化](docs/12-cost-optimization.md)。
 - 自动封面与真实云上传依赖外部服务；账号找回依赖管理员核验，尚未绑定邮箱或手机验证。
@@ -321,7 +370,7 @@ npm run build
 | 输入护栏与缓存 | [护栏扩展](docs/11-guardrail-extensions.md) · [成本优化](docs/12-cost-optimization.md) |
 | 创作流程与最新视觉系统 | [创作工作区](docs/13-frontend-creation-workspace.md) · [Forge UI](docs/ui-redesign/README.md) |
 | 账号与使用帮助 | [账号设置](docs/14-account-settings.md) · [使用指南](docs/15-usage-guide.md) · [密码找回](docs/16-authentication-and-recovery.md) |
-| 后端工程 | [后端说明](appforge-backend/README.md) |
+| 后端工程 | [单体说明](appforge-backend/README.md) · [微服务运行、网关路由与排障](appforge-microservices/README.md) |
 
 ## 第三方声明
 
