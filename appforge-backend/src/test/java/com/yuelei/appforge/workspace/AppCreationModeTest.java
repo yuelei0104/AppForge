@@ -31,7 +31,7 @@ class AppCreationModeTest {
     @ParameterizedTest
     @ValueSource(strings = {"vue_project", "multi_file", "html", ""})
     void requestedModeSurvivesHttpOrmStorageAndAppResponse(String mode) throws Exception {
-        String expected = mode.isEmpty() ? "multi_file" : mode;
+        String expected = mode.isEmpty() ? "html" : mode;
         var f = new AppWorkspaceTest();
         f.root = root;
         f.setup();
@@ -52,13 +52,8 @@ class AppCreationModeTest {
             ReflectionTestUtils.setField(service, "workspace", f.workspace);
             ReflectionTestUtils.setField(service, "userService", users);
             var routing = mock(AiCodeGenTypeRoutingService.class);
-            when(routing.routeCodeGenType(anyString()))
-                    .thenReturn(
-                            switch (expected) {
-                                case "html" -> CodeGenTypeEnum.HTML;
-                                case "vue_project" -> CodeGenTypeEnum.VUE_PROJECT;
-                                default -> CodeGenTypeEnum.MULTI_FILE;
-                            });
+            // 故意让路由器返回 HTML：显式模式必须仍保留，不能由模型覆盖。
+            when(routing.routeCodeGenType(anyString())).thenReturn(CodeGenTypeEnum.HTML);
             var routingFactory = mock(AiCodeGenTypeRoutingServiceFactory.class);
             when(routingFactory.createAiCodeGenTypeRoutingService()).thenReturn(routing);
             ReflectionTestUtils.setField(
@@ -84,6 +79,11 @@ class AppCreationModeTest {
             App stored = appMapper.selectOneById(id);
             assertNotNull(stored);
             assertEquals(expected, stored.getCodeGenType());
+            if (mode.isEmpty()) {
+                verify(routing).routeCodeGenType(anyString());
+            } else {
+                verifyNoInteractions(routingFactory, routing);
+            }
             assertEquals(
                     expected,
                     f.jdbc.queryForObject(

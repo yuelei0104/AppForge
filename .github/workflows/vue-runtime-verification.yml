@@ -23,12 +23,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     env:
+      APPFORGE_PASSWORD_REDIS_TEST: 'true'
+      APPFORGE_PASSWORD_REDIS_PORT: '16379'
       APPFORGE_DOCKER_TEST: 'true'
       APPFORGE_COVER_CHROME_TEST: 'true'
       APPFORGE_COVER_MYSQL_TEST: 'true'
       APPFORGE_COVER_MYSQL_URL: 'jdbc:mysql://127.0.0.1:13306/appforge_cover_test?serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false'
       APPFORGE_COVER_MYSQL_PASSWORD: 'cover-ci-only-password'
     services:
+      redis:
+        image: redis:7.4
+        ports: ['16379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=12
       mysql:
         image: mysql:8.4
         env:
@@ -51,7 +59,7 @@ jobs:
         run: docker version
       - name: Verify streams, workspace and actual Docker builds
         working-directory: appforge-backend
-        run: bash mvnw -B -Dtest=GuardrailPipelineTest,LlmPromptReviewerTest,PromptSafetyInputGuardrailTest,GuardrailAppServiceTest,AppControllerGuardrailTest,VisualEditToolsTest,CoverTaskTest,CoverWorkerTest,CoverHttpTest,CoverChromeTest,CoverMySqlTest,VueBuilderRegistrationTest,VueProjectRuntimeTest,ToolStreamHandlerTest,VueToolStreamingTest,VueToolHttpCancellationTest,LangchainConfigurationTest,NativeCodeCompletionTest,CancellableCodeStreamTest,NativeAssetsTest,NativeSourceDownloadTest,AiCodeGeneratorServiceFactoryTest,AppCreationModeTest,AppWorkspaceTest,AiCodeGeneratorFacadeMemoryTest,AppServiceAccessTest,ChatHistoryIntegrationTest,ChatConversationExtensionsTest,AppMetadataTest,CodeParserTest,VueProjectTest test
+        run: bash mvnw -B -Dtest=PasswordRecoveryTest,UserAccountSettingsTest,GuardrailPipelineTest,LlmPromptReviewerTest,PromptSafetyInputGuardrailTest,GuardrailAppServiceTest,AppControllerGuardrailTest,VisualEditToolsTest,CoverTaskTest,CoverWorkerTest,CoverHttpTest,CoverChromeTest,CoverMySqlTest,VueBuilderRegistrationTest,VueProjectRuntimeTest,ToolStreamHandlerTest,VueToolStreamingTest,VueToolHttpCancellationTest,LangchainConfigurationTest,NativeCodeCompletionTest,CancellableCodeStreamTest,NativeAssetsTest,NativeSourceDownloadTest,AiCodeGeneratorServiceFactoryTest,AppCreationModeTest,AppWorkspaceTest,AiCodeGeneratorFacadeMemoryTest,AppServiceAccessTest,ChatHistoryIntegrationTest,ChatConversationExtensionsTest,AppMetadataTest,CodeParserTest,VueProjectTest test
       - name: Screenshot the actual Docker-built Vue project
         working-directory: appforge-backend
         env:

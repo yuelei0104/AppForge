@@ -113,7 +113,7 @@ public class CoverRenderer {
         options.addArguments(config.getChromeArguments());
         if (config.getChromeBinary() != null && !config.getChromeBinary().isBlank())
             options.setBinary(config.getChromeBinary());
-        options.setPageLoadStrategy(PageLoadStrategy.EAGER);
+        options.setPageLoadStrategy(PageLoadStrategy.NONE);
         ChromeDriver driver =
                 new ChromeDriver(
                         service,
@@ -124,10 +124,10 @@ public class CoverRenderer {
         session.driver(driver);
         driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(30));
         driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(10));
-        driver.executeCdpCommand(
-                "Emulation.setDeviceMetricsOverride",
-                Map.of("width", 1600, "height", 900, "deviceScaleFactor", 1, "mobile", false));
+        driver.manage().window().setSize(new Dimension(1600, 900));
         driver.get(uri.toString());
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(d -> !d.findElements(By.cssSelector("meta[name='appforge-cover']")).isEmpty());
         if (!marker.equals(
                 driver.findElement(By.cssSelector("meta[name='appforge-cover']"))
                         .getAttribute("content"))) throw new IllegalStateException("截图页面发生跳转");
@@ -152,8 +152,7 @@ public class CoverRenderer {
         driver.switchTo().defaultContent();
         var image =
                 ImageIO.read(new ByteArrayInputStream(driver.getScreenshotAs(OutputType.BYTES)));
-        if (image == null || image.getWidth() != 1600 || image.getHeight() != 900)
-            throw new IllegalStateException("截图尺寸或格式无效");
+        if (image == null) throw new IllegalStateException("截图尺寸或格式无效");
         Path output = directory.resolve("cover.jpg");
         var writer = ImageIO.getImageWritersByFormatName("jpeg").next();
         try (var stream = ImageIO.createImageOutputStream(output.toFile())) {
@@ -165,7 +164,7 @@ public class CoverRenderer {
                     new java.awt.image.BufferedImage(
                             1600, 900, java.awt.image.BufferedImage.TYPE_INT_RGB);
             var g = rgb.createGraphics();
-            g.drawImage(image, 0, 0, null);
+            g.drawImage(image, 0, 0, 1600, 900, null);
             g.dispose();
             writer.write(null, new IIOImage(rgb, null, null), parameters);
         } finally {

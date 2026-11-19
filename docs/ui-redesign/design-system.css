@@ -1,0 +1,104 @@
+:root {
+  --ink: #17151a;
+  --ink-2: #2b2730;
+  --paper: #f3eee5;
+  --paper-2: #eae2d5;
+  --card: #fffdf9;
+  --line: #ddd3c4;
+  --line-dark: #3a343f;
+  --muted: #6b645b;
+  --muted-2: #9d9588;
+  --orange: #f25b35;
+  --orange-dark: #cf3f1d;
+  --orange-soft: #fbe4da;
+  --lime: #d8ef7a;
+  --cobalt: #2f3fa8;
+  --green: #2f7d5a;
+  --display: 'Bahnschrift', 'DIN Alternate', 'Arial Narrow', 'Microsoft YaHei', sans-serif;
+  --body: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mono: 'Cascadia Mono', 'Consolas', 'SFMono-Regular', monospace;
+  font-family: var(--body);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; }
+
+.logo-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--orange);
+  color: #17151a;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.14);
+}
+
+.wordmark {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+.wordmark small {
+  display: block;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: .22em;
+  color: var(--muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.btn {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.btn--primary { background: var(--ink); color: #fff; }
+.btn--orange { background: var(--orange); color: #17151a; }
+.btn--ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+.btn--text { background: transparent; color: var(--ink); padding-left: 8px; padding-right: 8px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.55);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.chip--active { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+.status-dot {
+  width: 7px; height: 7px; border-radius: 999px; background: var(--green);
+  box-shadow: 0 0 0 3px rgba(47,125,90,.14);
+}

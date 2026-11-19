@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: screenshot
+
+server:
+  port: 8127
+  servlet:
+    context-path: /api
+
+# 添加 COS 对象存储配置（需要从腾讯云获取）
+cos:
+  client:
+    host: https://appforge-1317627961.cos.ap-shanghai.myqcloud.com
+    secretId: ${TENCENT_COS_SECRET_ID}
+    secretKey: ${TENCENT_COS_SECRET_KEY}
+    region: ap-shanghai
+    bucket: appforge-1317627961
+
+# Dubbo
+dubbo:
+  application:
+    name: appforge-screenshot
+    protocol: tri
+    qos-enable: false
+
+  registry:
+    address: nacos://127.0.0.1:8848
+    register-mode: instance
+    parameters:
+      username: nacos
+      password: nacos
+
+  protocol:
+    name: tri
+    port: 50052
+
+  consumer:
+    timeout: 60000
+
+  provider:
+    timeout: 60000

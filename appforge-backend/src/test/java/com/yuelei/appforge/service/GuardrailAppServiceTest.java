@@ -166,8 +166,9 @@ class GuardrailAppServiceTest {
         verify(route).routeCodeGenType(f.saved.get().getInitPrompt());
     }
 
-    @Test
-    void blockedCreationDoesNotCallRouterOrSaveAnApplication() {
+    @ParameterizedTest
+    @ValueSource(strings = {"", "html", "multi_file", "vue_project"})
+    void blockedCreationDoesNotCallRouterOrSaveAnApplication(String mode) {
         Fixture f =
                 new Fixture(
                         (message, context) ->
@@ -177,7 +178,47 @@ class GuardrailAppServiceTest {
                                         List.of()));
         AppAddRequest body = new AppAddRequest();
         body.setInitPrompt("隐晦有害请求");
+        body.setCodeGenType(mode);
         assertThrows(PromptGuardrailException.class, () -> f.service.createApp(body, f.user));
+        assertNull(f.saved.get());
+        verifyNoInteractions(f.routing);
+    }
+
+
+    @ParameterizedTest
+    @ValueSource(strings = {"html", "multi_file", "vue_project"})
+    void explicitModeStillSanitizesPromptAndInitializesWorkspaceWithoutRouting(String mode) {
+        Fixture f = new Fixture((message, context) -> allow());
+        String key = "sk-" + "unit9012".repeat(4);
+        AppAddRequest body = new AppAddRequest();
+        body.setAppName("模式验证");
+        body.setInitPrompt("创建摄影博客，示例凭据 " + key);
+        body.setCodeGenType(mode);
+        assertEquals(99L, f.service.createApp(body, f.user));
+        App stored = f.saved.get();
+        assertEquals(mode, stored.getCodeGenType());
+        assertFalse(stored.getInitPrompt().contains(key));
+        assertTrue(stored.getInitPrompt().contains("[已移除敏感信息]"));
+        assertEquals("IDLE", stored.getGenerationStatus());
+        assertEquals(0, stored.getCurrentVersion());
+        assertEquals("PRIVATE", stored.getVisibility());
+        verifyNoInteractions(f.routing);
+        assertTrue(body.getInitPrompt().contains(key), "创建入口不应修改调用者的请求对象");
+    }
+
+    @Test
+    void unsupportedExplicitModeIsRejectedRatherThanAutomaticallyReplaced() {
+        Fixture f = new Fixture((message, context) -> allow());
+        AppAddRequest body = new AppAddRequest();
+        body.setAppName("模式验证");
+        body.setInitPrompt("创建摄影博客");
+        body.setCodeGenType("unsupported");
+        var error =
+                assertThrows(
+                        com.yuelei.appforge.exception.BusinessException.class,
+                        () -> f.service.createApp(body, f.user));
+        assertEquals(
+                com.yuelei.appforge.exception.ErrorCode.PARAMS_ERROR.getCode(), error.getCode());
         assertNull(f.saved.get());
         verifyNoInteractions(f.routing);
     }

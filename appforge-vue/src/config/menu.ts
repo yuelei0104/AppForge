@@ -17,11 +17,11 @@ export interface MenuItemConfig {
 export const menuItems: MenuItemConfig[] = [
   {
     key: '/',
-    label: '首页',
+    label: '创作',
   },
   {
     key: '/about',
-    label: '关于',
+    label: '指南',
   },
   {
     key: '/admin/appManage',

@@ -59,7 +59,7 @@ langchain4j:
   open-ai:
     chat-model:
       base-url: https://api.deepseek.com
-      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      api-key: 
       model-name: deepseek-flash
       max-retries: 3
       log-requests: true
@@ -68,7 +68,7 @@ langchain4j:
 
     streaming-chat-model:
       base-url: https://api.deepseek.com
-      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      api-key: 
       model-name: deepseek-flash
       max-tokens: 16384
       log-requests: true
@@ -78,7 +78,7 @@ langchain4j:
     # 推理 AI 模型配置（用于复杂的推理任务）
     reasoning-streaming-chat-model:
       base-url: https://api.deepseek.com
-      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      api-key: 
       model-name: deepseek-flash
       max-tokens: 32768
       temperature: 0.1
@@ -87,7 +87,7 @@ langchain4j:
     # 智能路由 AI 模型配置（用于简单的分类任务）
     routing-chat-model:
       base-url: https://api.deepseek.com
-      api-key: sk-08fffb88ea1942b8b1b0559e1da77838
+      api-key: 
       model-name: deepseek-flash
       log-requests: true
       log-responses: true
@@ -100,11 +100,26 @@ logging:
 cos:
   client:
     host: https://appforge-1317627961.cos.ap-shanghai.myqcloud.com
-    secretId: ${TENCENT_CLOUD_SECRET_ID}
-    secretKey: ${TENCENT_CLOUD_SECRET_KEY}
+    secretId: ${TENCENT_COS_SECRET_ID}
+    secretKey: ${TENCENT_COS_SECRET_KEY}
     region: ap-shanghai
     bucket: appforge-1317627961
 
 app:
   screenshot:
     base-url: http://127.0.0.1:8123/api
+  cover:
+    enabled: true
+    base-url: http://127.0.0.1:8123/api
+    public-base-url: http://localhost:8123/api
+    driver-path: C:\Users\aimin\.cache\selenium\chromedriver\win64\157.0.8103.38\chromedriver.exe
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+

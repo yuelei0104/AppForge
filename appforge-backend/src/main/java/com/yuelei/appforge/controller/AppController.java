@@ -24,7 +24,6 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -45,7 +44,6 @@ public class AppController {
     @Resource private UserService userService;
     @Resource private AppWorkspaceService workspace;
     @Resource private ChatTicketService chatTicketService;
-
     @Resource
     private PromptSafetyInputGuardrail promptSafetyInputGuardrail =
             new PromptSafetyInputGuardrail();
@@ -90,12 +88,8 @@ public class AppController {
     }
 
     @PostMapping("/good/list/page/vo")
-    @Cacheable(
-        value = "good_app_page",
-        key = "T(com.yuelei.appforge.utils.CacheKeyUtils).generateKey(#appQueryRequest)",
-        condition = "#appQueryRequest.pageNum <= 10"
-    )
-    public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest body) {
+    public BaseResponse<Page<AppVO>> listGoodAppVOByPage(
+            @RequestBody AppQueryRequest body) {
         return ResultUtils.success(appService.listFeaturedAppByPage(body));
     }
 

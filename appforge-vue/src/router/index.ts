@@ -13,6 +13,11 @@ import UserRegisterPage from '@/pages/user/UserRegisterPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  scrollBehavior(to, _from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.hash) return { el: to.hash, top: 88 }
+    return { top: 0 }
+  },
   routes: [
     {
       path: '/admin/chatManage',
@@ -34,6 +39,17 @@ const router = createRouter({
       path: '/user/login',
       name: 'userLogin',
       component: UserLoginPage,
+    },
+    {
+      path: '/user/forgot-password',
+      name: 'forgotPassword',
+      component: () => import('@/pages/user/ForgotPasswordPage.vue'),
+    },
+    {
+      path: '/user/settings',
+      name: 'userSettings',
+      component: () => import('@/pages/user/UserSettingsPage.vue'),
+      meta: { access: ACCESS_ENUM.USER },
     },
     {
       path: '/user/register',

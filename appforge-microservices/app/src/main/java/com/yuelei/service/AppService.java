@@ -1,0 +1,201 @@
+package com.yuelei.service;
+
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.service.IService;
+import com.yuelei.dto.app.AppAddRequest;
+import com.yuelei.dto.app.AppAdminUpdateRequest;
+import com.yuelei.dto.app.AppQueryRequest;
+import com.yuelei.dto.app.AppUpdateRequest;
+import com.yuelei.entity.App;
+import com.yuelei.entity.User;
+import com.yuelei.vo.AppVO;
+import reactor.core.publisher.Flux;
+
+import java.io.Serializable;
+import java.util.List;
+
+/**
+ * 应用服务层。
+ *
+ * @author yuelei
+ */
+public interface AppService extends IService<App> {
+
+    /**
+     * 创建应用
+     *
+     * @param appAddRequest 创建请求
+     * @param loginUser 当前登录用户
+     * @return 新应用 id
+     */
+    long addApp(AppAddRequest appAddRequest, User loginUser);
+
+    /**
+     * 用户更新自己的应用名称与封面
+     *
+     * @param appUpdateRequest 更新请求
+     * @param loginUser 当前登录用户
+     * @return 是否成功
+     */
+    boolean updateApp(AppUpdateRequest appUpdateRequest, User loginUser);
+
+    /**
+     * 用户删除自己的应用
+     *
+     * @param id 应用 id
+     * @param loginUser 当前登录用户
+     * @return 是否成功
+     */
+    boolean deleteApp(long id, User loginUser);
+
+    /**
+     * 登录用户查看自己的应用或精选应用详情
+     *
+     * @param id 应用 id
+     * @param loginUser 当前登录用户
+     * @return 应用详情
+     */
+    AppVO getAppVOById(long id, User loginUser);
+
+    /**
+     * 分页查询当前用户的应用列表
+     *
+     * @param appQueryRequest 查询请求
+     * @param loginUser 当前登录用户
+     * @return 应用分页
+     */
+    Page<AppVO> listMyAppByPage(AppQueryRequest appQueryRequest, User loginUser);
+
+    /**
+     * 分页查询精选应用列表（无需登录）
+     *
+     * @param appQueryRequest 查询请求
+     * @return 应用分页
+     */
+    Page<AppVO> listFeaturedAppByPage(AppQueryRequest appQueryRequest);
+
+    Page<AppVO> listPublicAppByPage(AppQueryRequest appQueryRequest);
+
+    /**
+     * 管理员删除任意应用
+     *
+     * @param id 应用 id
+     * @return 是否成功
+     */
+    boolean adminDeleteApp(long id);
+
+    /**
+     * 管理员更新任意应用
+     *
+     * @param appAdminUpdateRequest 更新请求
+     * @return 是否成功
+     */
+    boolean adminUpdateApp(AppAdminUpdateRequest appAdminUpdateRequest);
+
+    /**
+     * 管理员分页查询应用列表
+     *
+     * @param appQueryRequest 查询请求
+     * @return 应用分页
+     */
+    Page<AppVO> listAppByPage(AppQueryRequest appQueryRequest);
+
+    /**
+     * 管理员查看任意应用详情
+     *
+     * @param id 应用 id
+     * @return 应用详情
+     */
+    AppVO adminGetAppVOById(long id);
+
+    /**
+     * 应用实体转 VO
+     *
+     * @param app 应用实体
+     * @return 应用 VO
+     */
+    AppVO getAppVO(App app);
+
+    /**
+     * 应用实体列表转 VO 列表
+     *
+     * @param appList 应用实体列表
+     * @return 应用 VO 列表
+     */
+    List<AppVO> getAppVOList(List<App> appList);
+
+    /**
+     * 构造管理员查询条件
+     *
+     * @param appQueryRequest 查询请求
+     * @return 查询条件
+     */
+    QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest);
+
+    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            java.util.function.Consumer<com.yuelei.workspace.GenerationProgress>
+                    progress) {
+        return chatToGenCode(appId, message, user);
+    }
+
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            java.util.function.Consumer<com.yuelei.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(appId, message, user, progress);
+    }
+
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            List<Long> attachmentIds,
+            java.util.function.Consumer<com.yuelei.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(appId, message, user, attachmentIds, null, progress, onFileChange);
+    }
+
+    /**
+     * 带选中元素上下文的生成入口；element 只进入模型 prompt，不写入聊天历史。
+     */
+    default Flux<String> chatToGenCode(
+            Long appId,
+            String message,
+            User user,
+            List<Long> attachmentIds,
+            String element,
+            java.util.function.Consumer<com.yuelei.workspace.GenerationProgress>
+                    progress,
+            java.util.function.Consumer<com.yuelei.workspace.FileChangeEvent>
+                    onFileChange) {
+        return chatToGenCode(appId, message, user, attachmentIds, progress, onFileChange);
+    }
+
+    /**
+     * 部署应用
+     *
+     * @param appId 应用 id
+     * @param loginUser 当前登录用户
+     * @return 部署标识
+     */
+    String deployApp(Long appId, User loginUser);
+
+    void generateAppScreenshotAsync(Long appId, String appUrl);
+
+    boolean removeById(Serializable id);
+
+    Long createApp(AppAddRequest appAddRequest, User loginUser);
+}
+

@@ -1,14 +1,18 @@
 package com.yuelei.appforge.config;
 
+import com.yuelei.appforge.monitor.AiModelMonitorListener;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 
+import jakarta.annotation.Resource;
 import lombok.Data;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
+
+import java.util.List;
 
 @Configuration
 @ConfigurationProperties(prefix = "langchain4j.open-ai.reasoning-streaming-chat-model")
@@ -29,6 +33,9 @@ public class ReasoningStreamingChatModelConfig {
 
     private Boolean logResponses = false;
 
+    @Resource
+    private AiModelMonitorListener aiModelMonitorListener;
+
     @Bean
     @Scope("prototype")
     public StreamingChatModel reasoningStreamingChatModelPrototype() {
@@ -41,6 +48,7 @@ public class ReasoningStreamingChatModelConfig {
             .temperature(temperature)
             .logRequests(logRequests)
             .logResponses(logResponses)
+            .listeners(List.of(aiModelMonitorListener))
             .build();
     }
 }

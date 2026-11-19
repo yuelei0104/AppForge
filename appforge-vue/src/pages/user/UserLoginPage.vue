@@ -1,47 +1,39 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import AuthShell from '@/components/AuthShell.vue'
 import { userLogin } from '@/api/userController'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { authErrorMessage, safeAuthRedirect } from '@/utils/auth'
 
 const route = useRoute()
 const router = useRouter()
-const loginUserStore = useLoginUserStore()
-
-const formState = reactive<API.UserLoginRequest>({
-  userAccount: '',
-  userPassword: '',
+const store = useLoginUserStore()
+const formState = reactive({ userAccount: '', userPassword: '' })
+const loading = ref(false)
+const errorMessage = ref('')
+const redirect = computed(() => safeAuthRedirect(route.query.redirect))
+const onwardQuery = computed(() => (redirect.value === '/' ? {} : { redirect: redirect.value }))
+onBeforeUnmount(() => {
+  formState.userPassword = ''
 })
 
-const loading = ref(false)
-
-function getRedirectPath() {
-  const redirect = route.query.redirect
-  if (typeof redirect !== 'string') {
-    return '/'
-  }
-  // 只允许站内路径，避免开放重定向
-  if (!redirect.startsWith('/') || redirect.startsWith('//')) {
-    return '/'
-  }
-  return redirect
-}
-
-async function handleSubmit(values: API.UserLoginRequest) {
+async function handleSubmit() {
+  if (loading.value) return
   loading.value = true
+  errorMessage.value = ''
   try {
-    const res = await userLogin(values)
-    if (res.data.code === 0 && res.data.data) {
-      // 登录成功后重新获取登录态，写入全局 Store
-      await loginUserStore.fetchLoginUser()
-      message.success('登录成功')
-      await router.replace(getRedirectPath())
-    } else {
-      message.error('登录失败，' + res.data.message)
-    }
-  } catch {
-    message.error('登录失败，请稍后重试')
+    const res = await userLogin({ ...formState })
+    if (res.data.code !== 0 || !res.data.data?.id)
+      throw new Error(res.data.message || '登录失败，请重试')
+    // 登录响应已由服务端校验并脱敏，立即同步身份，保留原有站内跳转。
+    store.setLoginUser(res.data.data)
+    formState.userPassword = ''
+    message.success('登录成功')
+    await router.replace(redirect.value)
+  } catch (error) {
+    errorMessage.value = authErrorMessage(error, '暂时无法登录，请检查网络后重试')
   } finally {
     loading.value = false
   }
@@ -49,79 +41,53 @@ async function handleSubmit(values: API.UserLoginRequest) {
 </script>
 
 <template>
-  <div id="userLoginPage">
-    <h2 class="title">岳蕾 AI 应用生成 - 用户登录</h2>
-    <div class="desc">不写一行代码，生成完整应用</div>
-
-    <a-form
-      :model="formState"
-      name="basic"
-      autocomplete="off"
-      @finish="handleSubmit"
-    >
+  <AuthShell title="登录 AppForge" description="欢迎回来，继续实现你的下一个想法。">
+    <a-alert v-if="errorMessage" :message="errorMessage" type="error" show-icon role="alert" />
+    <a-form :model="formState" layout="vertical" @finish="handleSubmit">
       <a-form-item
+        label="账号"
         name="userAccount"
-        :rules="[{ required: true, message: '请输入账号' }]"
+        :rules="[
+          { required: true, message: '请输入账号' },
+          { min: 4, message: '账号不能少于 4 位' },
+        ]"
       >
         <a-input
           v-model:value="formState.userAccount"
           placeholder="请输入账号"
+          autocomplete="username"
+          aria-label="账号"
+          :disabled="loading"
         />
       </a-form-item>
-
       <a-form-item
+        label="密码"
         name="userPassword"
         :rules="[
           { required: true, message: '请输入密码' },
-          { min: 8, message: '密码不能小于 8 位' },
+          { min: 8, message: '密码不能少于 8 位' },
         ]"
       >
         <a-input-password
           v-model:value="formState.userPassword"
           placeholder="请输入密码"
+          autocomplete="current-password"
+          aria-label="密码"
+          :disabled="loading"
         />
       </a-form-item>
-
-      <div class="tips">
-        没有账号？
-        <RouterLink to="/user/register">去注册</RouterLink>
-      </div>
-
-      <a-form-item>
-        <a-button
-          type="primary"
-          html-type="submit"
-          style="width: 100%"
-          :loading="loading"
+      <div class="auth-links">
+        <router-link :to="{ path: '/user/register', query: onwardQuery }">创建新账号</router-link
+        ><router-link :to="{ path: '/user/forgot-password', query: onwardQuery }"
+          >忘记密码？</router-link
         >
-          登录
-        </a-button>
-      </a-form-item>
+      </div>
+      <a-button class="auth-submit" type="primary" html-type="submit" :loading="loading"
+        >登录</a-button
+      >
     </a-form>
-  </div>
+    <p class="auth-switch">
+      还没想好从哪里开始？<router-link to="/about">查看使用指南</router-link>
+    </p>
+  </AuthShell>
 </template>
-
-<style scoped>
-#userLoginPage {
-  max-width: 360px;
-  margin: 0 auto;
-}
-
-.title {
-  margin-bottom: 16px;
-  text-align: center;
-}
-
-.desc {
-  margin-bottom: 16px;
-  color: #bbb;
-  text-align: center;
-}
-
-.tips {
-  margin-bottom: 16px;
-  font-size: 13px;
-  color: #bbb;
-  text-align: right;
-}
-</style>

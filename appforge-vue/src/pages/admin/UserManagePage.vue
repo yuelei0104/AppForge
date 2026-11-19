@@ -3,9 +3,16 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import type { TableColumnsType, TablePaginationConfig } from 'ant-design-vue'
 import { deleteUser, listUserVoByPage } from '@/api/userController'
+import PasswordResetCodeModal from '@/components/PasswordResetCodeModal.vue'
 
 const data = ref<API.UserVO[]>([])
 const total = ref(0)
+const resetOpen = ref(false)
+const resetUser = ref<API.UserVO | null>(null)
+function openPasswordReset(user: API.UserVO) {
+  resetUser.value = user
+  resetOpen.value = true
+}
 
 const searchParams = reactive<API.UserQueryRequest>({
   pageNum: 1,
@@ -61,7 +68,7 @@ const columns: TableColumnsType = [
   {
     title: '操作',
     key: 'action',
-    width: 100,
+    width: 200,
     fixed: 'right',
   },
 ]
@@ -151,18 +158,10 @@ onMounted(() => {
       @finish="doSearch"
     >
       <a-form-item label="账号" name="userAccount">
-        <a-input
-          v-model:value="searchParams.userAccount"
-          placeholder="输入账号"
-          allow-clear
-        />
+        <a-input v-model:value="searchParams.userAccount" placeholder="输入账号" allow-clear />
       </a-form-item>
       <a-form-item label="用户名" name="userName">
-        <a-input
-          v-model:value="searchParams.userName"
-          placeholder="输入用户名"
-          allow-clear
-        />
+        <a-input v-model:value="searchParams.userName" placeholder="输入用户名" allow-clear />
       </a-form-item>
       <a-form-item>
         <a-button type="primary" html-type="submit">搜索</a-button>
@@ -196,6 +195,7 @@ onMounted(() => {
           {{ formatDateTime(record.createTime) }}
         </template>
         <template v-else-if="column.key === 'action'">
+          <a-button type="link" @click="openPasswordReset(record)">重置密码</a-button>
           <a-popconfirm
             title="确定删除该用户吗？"
             ok-text="删除"
@@ -207,6 +207,7 @@ onMounted(() => {
         </template>
       </template>
     </a-table>
+    <PasswordResetCodeModal v-model:open="resetOpen" :user="resetUser" />
   </a-card>
 </template>
 

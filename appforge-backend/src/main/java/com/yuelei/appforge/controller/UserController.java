@@ -52,7 +52,7 @@ public class UserController {
         String userAccount = userRegisterRequest.getUserAccount();
         String userPassword = userRegisterRequest.getUserPassword();
         String checkPassword = userRegisterRequest.getCheckPassword();
-        long result = userService.userRegister(userAccount, userPassword, checkPassword);
+        long result = userService.userRegister(userAccount, userPassword, checkPassword, userRegisterRequest.getUserName());
         return ResultUtils.success(result);
     }
 
@@ -79,6 +79,24 @@ public class UserController {
         return ResultUtils.success(result);
     }
 
+
+    /** 修改当前用户昵称，不接受用户 id、角色或账号。 */
+    @PostMapping("/profile/update")
+    public BaseResponse<LoginUserVO> updateMyProfile(
+            @RequestBody UserProfileUpdateRequest body, HttpServletRequest request) {
+        ThrowUtils.throwIf(body == null, ErrorCode.PARAMS_ERROR);
+        return ResultUtils.success(userService.updateMyProfile(body.getUserName(), request));
+    }
+
+    /** 验证原密码并修改密码，修改后当前会话失效。 */
+    @PostMapping("/password/update")
+    public BaseResponse<Boolean> updateMyPassword(
+            @RequestBody UserPasswordUpdateRequest body, HttpServletRequest request) {
+        ThrowUtils.throwIf(body == null, ErrorCode.PARAMS_ERROR);
+        userService.updateMyPassword(
+                body.getOldPassword(), body.getNewPassword(), body.getCheckPassword(), request);
+        return ResultUtils.success(true);
+    }
 
     /**
      * 创建用户

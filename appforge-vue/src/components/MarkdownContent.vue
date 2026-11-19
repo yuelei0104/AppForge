@@ -199,4 +199,40 @@ onMounted(syncCodeBlockState)
   border: 0;
   border-top: 1px solid #e6e8ef;
 }
-</style>
+/* Forge code cards */
+.markdown-content :deep(details.md-code) {
+  background: var(--forge-card);
+  border-color: #e2d5c3;
+  border-radius: 7px;
+}
+
+.markdown-content :deep(details.md-code > summary) {
+  color: var(--forge-ink);
+  background: #f5eee3;
+}
+
+.markdown-content :deep(.md-code__icon) {
+  color: var(--forge-orange-deep);
+  background: #f7ded4;
+}
+
+.markdown-content :deep(.md-code__title) {
+  font-size: 12px;
+}
+
+.markdown-content :deep(.md-code__lines),
+.markdown-content :deep(.md-code__hint) {
+  color: var(--forge-muted-2);
+  font-size: 10px;
+}
+
+.markdown-content :deep(.md-code__pre) {
+  color: #d7d1c7;
+  background: #1b1918;
+  border-top-color: #37312c;
+}
+
+.markdown-content :deep(.md-code__pre code) {
+  font-family: var(--forge-font-mono);
+  font-size: 10px;
+}</style>
