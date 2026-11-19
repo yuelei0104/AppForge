@@ -20,6 +20,12 @@ AppForge 面向希望通过自然语言创建网页的用户，提供从需求�
 
 管理界面和看板的生成产物属于前端网页，真实业务数据、支付或其他后端能力需要另行接入。项目当前重点是让生成结果能够持续修改、恢复和交付。
 
+### 功能与技术全景
+
+![AppForge 功能与技术全景](docs/diagrams/appforge-capability-map.png)
+
+[查看可编辑 SVG](docs/diagrams/appforge-capability-map.svg)。图中按当前实现归纳能力，微服务迁移和专项运行验证仍需结合实际环境验收。
+
 ## 界面预览
 
 ### 创作首页
@@ -91,57 +97,19 @@ Vue 工程通过受限文件工具读写源码，再由平台固定的 Docker �
 
 平台采用前后端分离结构。单体模式由 `appforge-backend` 承载业务；下图展示微服务接入方式和当前代码中的依赖关系，HTTP 网关路由需要在运行环境中配置。
 
-```mermaid
-flowchart TD
-    Web["Vue 创作工作台"] --> Gateway["Higress HTTP 网关"]
-    Gateway -->|"HTTP 8124"| User["user 用户服务"]
-    Gateway -->|"HTTP 8125"| App
+![AppForge 系统架构与模块边界](docs/diagrams/appforge-architecture.png)
 
-    subgraph AppProcess["app 应用服务进程"]
-        App["应用编排与版本管理"]
-        AI["ai 依赖模块"]
-        Cover["本地封面任务"]
-        App --> AI
-        App --> Cover
-    end
+[查看可编辑 SVG](docs/diagrams/appforge-architecture.svg)
 
-    User --> MySQL["MySQL 业务数据"]
-    User --> Redis["Redis 会话与记忆"]
-    App --> MySQL
-    App --> Redis
-    AI --> Model["OpenAI 兼容模型 API"]
-    Cover --> COS["COS 对象存储"]
-    Screenshot["screenshot 独立截图服务"] --> COS
-
-    User -.->|"Dubbo 注册"| Nacos["Nacos 注册中心"]
-    App -.->|"Dubbo 注册"| Nacos
-    Screenshot -.->|"Dubbo 注册"| Nacos
-```
-
-图中实线表示 HTTP 请求或能力依赖，虚线表示 Dubbo 注册关系。`ai` 是 `app` 的进程内依赖；`screenshot` 已有独立服务入口，但当前 `app` 的封面队列仍调用本地渲染器。独立截图服务与这条任务链的整合仍待完成。
+图中按客户端、接入方式、业务与执行、治理与观测、存储划分职责。业务层展示微服务的当前模块边界；单体模式将相应业务集中在同一后端进程。`ai` 是 `app` 的进程内依赖；`screenshot` 已有独立服务入口，但当前 `app` 的封面队列仍调用本地渲染器，整合尚待完成。
 
 微服务目前仍共享 MySQL 与 Redis Session。HTTP 请求转发到 8124/8125，Triple 端口用于内部接口，不能直接作为 REST 上游。单体运行时，前端直接经开发代理访问 8123，不需要启动 Higress、Nacos 和这些拆分服务。
 
 ### 生成与交付流程
 
-```mermaid
-flowchart TD
-    Request["创建应用或发送修改需求"] --> Check["身份与权限校验"]
-    Check --> Ticket["申请一次性 ticket 并建立 SSE"]
-    Ticket --> Mode{"本次生成模式"}
-    Mode -->|"HTML 或多文件"| Native["模型流式生成与解析"]
-    Mode -->|"Vue 工程"| Tools["文件工具生成受限工程"]
-    Tools --> Build["Docker 安装依赖并构建"]
-    Native --> Validate["源码与产物校验"]
-    Build --> Validate
-    Validate --> Success{"本次任务成功"}
-    Success -->|"是"| Save["保存成功版本并更新预览"]
-    Success -->|"否"| Keep["报告失败并保留上一成功版本"]
-    Native -->|"失败或停止"| Keep
-    Tools -->|"失败或停止"| Keep
-    Build -->|"失败或停止"| Keep
-    Save --> Deliver["下载源码或发布指定版本"]
-```
+![AppForge 业务生成与交付流程](docs/diagrams/appforge-workflow.png)
+
+[查看可编辑 SVG](docs/diagrams/appforge-workflow.svg)
 
 SSE 在任务执行期间推送模型文本、工具事件、文件进度与错误。只有生成和必要的构建、校验通过后才保存新版本；首次生成失败时没有成功版本可供预览。发布操作绑定一个成功版本，后续预览修改不会自动覆盖已发布版本。
 
